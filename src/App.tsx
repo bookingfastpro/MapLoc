@@ -42,6 +42,14 @@ const userIcon = L.divIcon({
   iconAnchor: [8, 8]
 });
 
+// Custom Point Marker for drawing/editing
+const createPointIcon = (color: string) => L.divIcon({
+  className: 'custom-point-marker',
+  html: `<div style="background-color: white; border: 3px solid ${color}; width: 12px; height: 12px; border-radius: 50%;"></div>`,
+  iconSize: [12, 12],
+  iconAnchor: [6, 6]
+});
+
 // Component to center map on user position
 function ChangeView({ center, shouldCenter }: { center: [number, number], shouldCenter: boolean }) {
   const map = useMap();
@@ -89,6 +97,7 @@ export default function App() {
 
   // Drawing state
   const [isDrawing, setIsDrawing] = useState(false);
+  const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
   const [newZonePoints, setNewZonePoints] = useState<[number, number][]>([]);
   const [newZoneColor, setNewZoneColor] = useState<'red' | 'green'>('red');
   const [newZoneName, setNewZoneName] = useState('');
@@ -172,12 +181,27 @@ export default function App() {
 
   const startDrawing = () => {
     setIsDrawing(true);
+    setEditingZoneId(null);
     setNewZonePoints([]);
     setNewZoneName(`Zone ${zones.length + 1}`);
   };
 
+  const startEditing = (zone: Zone) => {
+    setIsDrawing(true);
+    setEditingZoneId(zone.id);
+    setNewZonePoints([...zone.points]);
+    setNewZoneColor(zone.color);
+    setNewZoneName(zone.name);
+  };
+
   const addPoint = (lat: number, lng: number) => {
     setNewZonePoints([...newZonePoints, [lat, lng]]);
+  };
+
+  const updatePoint = (idx: number, lat: number, lng: number) => {
+    const updated = [...newZonePoints];
+    updated[idx] = [lat, lng];
+    setNewZonePoints(updated);
   };
 
   const saveZone = async () => {
@@ -186,14 +210,25 @@ export default function App() {
       return;
     }
     try {
-      await axios.post('/api/zones', {
-        name: newZoneName,
-        color: newZoneColor,
-        points: newZonePoints
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      if (editingZoneId) {
+        await axios.put(`/api/zones/${editingZoneId}`, {
+          name: newZoneName,
+          color: newZoneColor,
+          points: newZonePoints
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } else {
+        await axios.post('/api/zones', {
+          name: newZoneName,
+          color: newZoneColor,
+          points: newZonePoints
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
       setIsDrawing(false);
+      setEditingZoneId(null);
       setNewZonePoints([]);
       fetchZones();
     } catch (err) {
@@ -292,15 +327,17 @@ export default function App() {
                 }}
               />
               {newZonePoints.map((point, idx) => (
-                <CircleMarker
+                <Marker
                   key={idx}
-                  center={point}
-                  radius={5}
-                  pathOptions={{
-                    fillColor: 'white',
-                    color: newZoneColor === 'red' ? '#ef4444' : '#22c55e',
-                    fillOpacity: 1,
-                    weight: 2
+                  position={point}
+                  draggable={true}
+                  icon={createPointIcon(newZoneColor === 'red' ? '#ef4444' : '#22c55e')}
+                  eventHandlers={{
+                    dragend: (e) => {
+                      const marker = e.target;
+                      const position = marker.getLatLng();
+                      updatePoint(idx, position.lat, position.lng);
+                    },
                   }}
                 />
               ))}
@@ -341,120 +378,6 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Header / Top Bar */}
-      <div className="absolute top-4 left-4 right-4 z-10 flex justify-end items-start pointer-events-none">
-        <div className="flex flex-col gap-2 pointer-events-auto">
-          {!isAdmin ? (
-            <button
-              onClick={() => setShowLogin(true)}
-              className="bg-white/90 backdrop-blur-md p-3 rounded-full shadow-lg hover:bg-white transition-colors text-gray-700"
-              title="Admin Login"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
-          ) : (
-            <div className="flex flex-col gap-2 items-end">
-              <button
-                onClick={handleLogout}
-                className="bg-red-500 text-white p-3 rounded-full shadow-lg hover:bg-red-600 transition-colors"
-                title="Logout"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
-              <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 w-64">
-                <h2 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                  <Settings className="w-4 h-4" /> Panel Admin
-                </h2>
-                
-                {!isDrawing ? (
-                  <button
-                    onClick={startDrawing}
-                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" /> Créer une zone
-                  </button>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setNewZoneColor('red')}
-                        className={`flex-1 py-1 rounded-lg text-xs font-bold border-2 transition-all ${newZoneColor === 'red' ? 'bg-red-500 border-red-700 text-white' : 'bg-red-100 border-transparent text-red-700'}`}
-                      >
-                        ROUGE
-                      </button>
-                      <button
-                        onClick={() => setNewZoneColor('green')}
-                        className={`flex-1 py-1 rounded-lg text-xs font-bold border-2 transition-all ${newZoneColor === 'green' ? 'bg-green-500 border-green-700 text-white' : 'bg-green-100 border-transparent text-green-700'}`}
-                      >
-                        VERT
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={newZoneName}
-                      onChange={(e) => setNewZoneName(e.target.value)}
-                      placeholder="Nom de la zone"
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <p className="text-[10px] text-gray-500 italic">Cliquez sur la carte pour ajouter des points (min. 3)</p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={saveZone}
-                        disabled={newZonePoints.length < 3}
-                        className="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1 hover:bg-green-700 disabled:opacity-50"
-                      >
-                        <Save className="w-4 h-4" /> Sauver
-                      </button>
-                      <button
-                        onClick={() => setIsDrawing(false)}
-                        className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1 hover:bg-gray-300"
-                      >
-                        <X className="w-4 h-4" /> Annuler
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-4 border-t pt-4">
-                  <div className="flex gap-2 mb-4">
-                    <button
-                      onClick={exportZones}
-                      className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-gray-200"
-                      title="Exporter en JSON"
-                    >
-                      <Download className="w-3 h-3" /> EXPORTER
-                    </button>
-                    <label className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-gray-200 cursor-pointer" title="Importer un JSON">
-                      <Upload className="w-3 h-3" /> IMPORTER
-                      <input type="file" accept=".json" onChange={importZones} className="hidden" />
-                    </label>
-                  </div>
-
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Zones existantes</h3>
-                  <div className="max-h-48 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                    {zones.length === 0 && <p className="text-xs text-gray-400 italic">Aucune zone</p>}
-                    {zones.map(z => (
-                      <div key={z.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100">
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${z.color === 'red' ? 'bg-red-500' : 'bg-green-500'}`} />
-                          <span className="text-xs font-medium text-gray-700 truncate">{z.name}</span>
-                        </div>
-                        <button
-                          onClick={() => deleteZone(z.id)}
-                          className="text-gray-400 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Login Modal */}
       <AnimatePresence>
@@ -513,6 +436,124 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Admin Controls (Bottom Right) */}
+      <div className="absolute bottom-24 right-6 z-10 flex flex-col gap-2 items-end pointer-events-none">
+        <div className="flex flex-col gap-2 pointer-events-auto items-end">
+          {!isAdmin ? (
+            <button
+              onClick={() => setShowLogin(true)}
+              className="bg-white/90 backdrop-blur-md p-4 rounded-full shadow-lg hover:bg-white transition-colors text-gray-700"
+              title="Admin Login"
+            >
+              <Settings className="w-6 h-6" />
+            </button>
+          ) : (
+            <div className="flex flex-col gap-2 items-end">
+              <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 w-64">
+                <div className="flex justify-between items-center mb-3">
+                  <h2 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+                    <Settings className="w-4 h-4" /> Panel Admin
+                  </h2>
+                  <button
+                    onClick={handleLogout}
+                    className="text-red-500 hover:text-red-700 transition-colors"
+                    title="Logout"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+                
+                {!isDrawing ? (
+                  <button
+                    onClick={startDrawing}
+                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors text-xs"
+                  >
+                    <Plus className="w-4 h-4" /> Créer une zone
+                  </button>
+                ) : (
+                  <div className="space-y-3">
+                    <h3 className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
+                      {editingZoneId ? 'Édition' : 'Création'}
+                    </h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setNewZoneColor('red')}
+                        className={`flex-1 py-1 rounded-lg text-[10px] font-bold border-2 transition-all ${newZoneColor === 'red' ? 'bg-red-500 border-red-700 text-white' : 'bg-red-100 border-transparent text-red-700'}`}
+                      >
+                        ROUGE
+                      </button>
+                      <button
+                        onClick={() => setNewZoneColor('green')}
+                        className={`flex-1 py-1 rounded-lg text-[10px] font-bold border-2 transition-all ${newZoneColor === 'green' ? 'bg-green-500 border-green-700 text-white' : 'bg-green-100 border-transparent text-green-700'}`}
+                      >
+                        VERT
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={newZoneName}
+                      onChange={(e) => setNewZoneName(e.target.value)}
+                      placeholder="Nom de la zone"
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveZone}
+                        disabled={newZonePoints.length < 3}
+                        className="flex-1 bg-green-600 text-white py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-green-700 disabled:opacity-50"
+                      >
+                        <Save className="w-3 h-3" /> Sauver
+                      </button>
+                      <button
+                        onClick={() => setIsDrawing(false)}
+                        className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-gray-300"
+                      >
+                        <X className="w-3 h-3" /> Annuler
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 border-t pt-4">
+                  <div className="flex gap-2 mb-4">
+                    <button
+                      onClick={exportZones}
+                      className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-[9px] font-bold flex items-center justify-center gap-1 hover:bg-gray-200"
+                    >
+                      <Download className="w-3 h-3" /> EXPORT
+                    </button>
+                    <label className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-[9px] font-bold flex items-center justify-center gap-1 hover:bg-gray-200 cursor-pointer">
+                      <Upload className="w-3 h-3" /> IMPORT
+                      <input type="file" accept=".json" onChange={importZones} className="hidden" />
+                    </label>
+                  </div>
+
+                  <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Zones</h3>
+                  <div className="max-h-32 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                    {zones.map(z => (
+                      <div key={z.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100 group">
+                        <div className="flex items-center gap-2 overflow-hidden cursor-pointer flex-1" onClick={() => startEditing(z)}>
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${z.color === 'red' ? 'bg-red-500' : 'bg-green-500'}`} />
+                          <span className="text-[10px] font-medium text-gray-700 truncate group-hover:text-blue-600">{z.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => startEditing(z)} className="text-gray-400 hover:text-blue-500 p-1">
+                            <Settings className="w-3 h-3" />
+                          </button>
+                          <button onClick={() => deleteZone(z.id)} className="text-gray-400 hover:text-red-500 p-1">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Floating Action Button for Location (Mobile) */}
       <button
