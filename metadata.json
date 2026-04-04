@@ -1,0 +1,7 @@
+{
+  "name": "GeoZone Manager",
+  "description": "Application interactive de gestion de zones géographiques (rouges/vertes) avec suivi de position en temps réel et interface admin.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
