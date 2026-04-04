@@ -5,6 +5,21 @@ import { Zone, UserPosition } from './types';
 import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
+import { AlertTriangle } from 'lucide-react';
+
+// Point-in-polygon algorithm (Ray Casting)
+function isPointInPolygon(point: [number, number], polygon: [number, number][]) {
+  const x = point[0], y = point[1];
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
+    const intersect = ((yi > y) !== (yj > y)) &&
+      (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
 
 // Fix Leaflet icon issue
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -70,6 +85,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [shouldCenter, setShouldCenter] = useState(true);
+  const [activeWarning, setActiveWarning] = useState<string | null>(null);
 
   // Drawing state
   const [isDrawing, setIsDrawing] = useState(false);
@@ -111,6 +127,20 @@ export default function App() {
       return () => navigator.geolocation.clearWatch(watchId);
     }
   }, []);
+
+  useEffect(() => {
+    if (userPos && zones.length > 0) {
+      const redZones = zones.filter(z => z.color === 'red');
+      const currentZone = redZones.find(z => isPointInPolygon([userPos.lat, userPos.lng], z.points));
+      if (currentZone) {
+        setActiveWarning(currentZone.name);
+      } else {
+        setActiveWarning(null);
+      }
+    } else {
+      setActiveWarning(null);
+    }
+  }, [userPos, zones]);
 
   // Auth check
   useEffect(() => {
@@ -287,18 +317,33 @@ export default function App() {
 
       {/* UI Overlays */}
       
-      {/* Header / Top Bar */}
-      <div className="absolute top-4 left-4 right-4 z-10 flex justify-between items-start pointer-events-none">
-        <div className="bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-xl border border-white/20 pointer-events-auto">
-          <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-            <Navigation className="w-6 h-6 text-blue-600" />
-            GeoZone Manager
-          </h1>
-          <p className="text-xs text-gray-500 mt-1">
-            {userPos ? `Position: ${userPos.lat.toFixed(4)}, ${userPos.lng.toFixed(4)}` : 'Recherche de position...'}
-          </p>
-        </div>
+      {/* Red Zone Warning Notification */}
+      <AnimatePresence>
+        {activeWarning && (
+          <motion.div
+            initial={{ y: -100, opacity: 0, x: '-50%' }}
+            animate={{ y: 60, opacity: 1, x: '-50%' }}
+            exit={{ y: -100, opacity: 0, x: '-50%' }}
+            className="absolute top-0 left-1/2 z-50 w-full max-w-md px-4 pointer-events-none"
+          >
+            <div className="bg-red-600 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-4 border-2 border-red-400/50 backdrop-blur-md">
+              <div className="bg-white/20 p-2 rounded-xl">
+                <AlertTriangle className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <p className="font-bold text-sm">Alerte Zone Rouge !</p>
+                <p className="text-xs opacity-90">
+                  Vous êtes dans la zone <span className="font-black underline">"{activeWarning}"</span>. 
+                  Il faut revenir dans une zone verte.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
+      {/* Header / Top Bar */}
+      <div className="absolute top-4 left-4 right-4 z-10 flex justify-end items-start pointer-events-none">
         <div className="flex flex-col gap-2 pointer-events-auto">
           {!isAdmin ? (
             <button
