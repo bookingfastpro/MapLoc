@@ -73,7 +73,7 @@ function ChangeView({ center, shouldCenter }: { center: [number, number], should
   useEffect(() => {
     if (shouldCenter) {
       const currentZoom = map.getZoom();
-      const targetZoom = currentZoom < 18 ? 18 : currentZoom;
+      const targetZoom = currentZoom < 17 ? 17 : currentZoom;
       
       // If zoom is already correct, use panTo for smoother tracking
       if (currentZoom === targetZoom) {
@@ -400,7 +400,7 @@ export default function App() {
     <div className="relative h-[100dvh] w-full bg-gray-100 font-sans overflow-hidden">
       {/* Map Container */}
       <div className="absolute inset-0 z-0">
-        <MapContainer center={[48.8566, 2.3522]} zoom={18} scrollWheelZoom={true} zoomControl={false}>
+        <MapContainer center={[48.8566, 2.3522]} zoom={17} scrollWheelZoom={true} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
