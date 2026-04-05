@@ -749,93 +749,93 @@ export default function App() {
 
       {/* Countdown Timer (Bottom Center) */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-[350px] px-2">
-        <div className="bg-white px-4 py-2.5 rounded-2xl shadow-2xl border border-gray-100 flex flex-col items-center gap-2 pointer-events-auto cursor-default">
-          <div className="flex items-center justify-between w-full gap-3">
-            <div 
-              className="flex flex-col cursor-pointer hover:bg-gray-50 p-1 rounded-lg transition-colors flex-1 min-w-0"
-              onClick={() => {
-                const totalMins = Math.floor(totalCountdownTime / 60000);
-                setEditHours(Math.floor(totalMins / 60).toString());
-                setEditMinutes((totalMins % 60).toString());
-                setShowTimeEditor(true);
-              }}
-              title="Cliquer pour éditer le temps"
+        <div className="bg-white px-4 py-3 rounded-2xl shadow-2xl border border-gray-100 flex flex-col items-center gap-3 pointer-events-auto cursor-default">
+          {/* Timer Display Row */}
+          <div 
+            className="flex flex-col items-center cursor-pointer hover:bg-gray-50 px-4 py-1 rounded-xl transition-colors w-full"
+            onClick={() => {
+              const totalMins = Math.floor(totalCountdownTime / 60000);
+              setEditHours(Math.floor(totalMins / 60).toString());
+              setEditMinutes((totalMins % 60).toString());
+              setShowTimeEditor(true);
+            }}
+            title="Cliquer pour éditer le temps"
+          >
+            <span className={`text-2xl font-mono font-bold tabular-nums leading-none ${
+              remainingTime <= 0 
+                ? 'text-red-600 animate-pulse' 
+                : remainingTime <= 15 * 60 * 1000 
+                  ? 'text-amber-500' 
+                  : 'text-gray-800'
+            }`}>
+              {formatTime(remainingTime)}
+            </span>
+          </div>
+
+          {/* Buttons Row */}
+          <div className="flex items-center justify-center w-full gap-1.5">
+            <a
+              href="tel:+33970703989"
+              className="p-2.5 bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors shadow-sm active:scale-90 flex items-center justify-center"
+              title="Appeler le support"
             >
-              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Compte à rebours</span>
-              <span className={`text-base font-mono font-bold tabular-nums leading-none ${
-                remainingTime <= 0 
-                  ? 'text-red-600 animate-pulse' 
-                  : remainingTime <= 15 * 60 * 1000 
-                    ? 'text-amber-500' 
-                    : 'text-gray-800'
-              }`}>
-                {formatTime(remainingTime)}
-              </span>
-            </div>
-            <div className="flex gap-1.5 shrink-0">
-              <a
-                href="tel:+33970703989"
-                className="p-2.5 bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors shadow-sm active:scale-90 flex items-center justify-center"
-                title="Appeler le support"
-              >
-                <Phone className="w-4 h-4" />
-              </a>
-              <button
-                onClick={() => {
-                  if (userPos) {
-                    setShouldCenter(true);
-                  }
-                }}
-                className={`p-2.5 rounded-full shadow-sm transition-all active:scale-90 flex items-center justify-center ${shouldCenter ? 'bg-blue-600 text-white' : 'bg-gray-100 text-blue-600 hover:bg-gray-200'}`}
-                title="Recentrer"
-              >
-                <MapPin className="w-4 h-4" />
-              </button>
-              <div className="w-[1px] h-5 bg-gray-200 mx-0.5 self-center" />
-              {!timerRunning ? (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    startTimer();
-                  }}
-                  className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-md active:scale-90 flex items-center justify-center"
-                  title="Démarrer"
-                >
-                  <Play className="w-4 h-4 fill-current" />
-                </button>
-              ) : (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    pauseTimer();
-                  }}
-                  className="p-2.5 bg-amber-500 text-white rounded-full hover:bg-amber-600 transition-colors shadow-md active:scale-90 flex items-center justify-center"
-                  title="Pause"
-                >
-                  <Pause className="w-4 h-4 fill-current" />
-                </button>
-              )}
+              <Phone className="w-4 h-4" />
+            </a>
+            <button
+              onClick={() => {
+                if (userPos) {
+                  setShouldCenter(true);
+                }
+              }}
+              className={`p-2.5 rounded-full shadow-sm transition-all active:scale-90 flex items-center justify-center ${shouldCenter ? 'bg-blue-600 text-white' : 'bg-gray-100 text-blue-600 hover:bg-gray-200'}`}
+              title="Recentrer"
+            >
+              <MapPin className="w-4 h-4" />
+            </button>
+            <div className="w-[1px] h-5 bg-gray-200 mx-0.5 self-center" />
+            {!timerRunning ? (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  resetTimer();
+                  startTimer();
                 }}
-                className="p-2.5 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors shadow-sm active:scale-90 flex items-center justify-center"
-                title="Réinitialiser"
+                className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-md active:scale-90 flex items-center justify-center"
+                title="Démarrer"
               >
-                <RotateCcw className="w-4 h-4" />
+                <Play className="w-4 h-4 fill-current" />
               </button>
+            ) : (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setShowHistory(true);
+                  pauseTimer();
                 }}
-                className="p-2.5 bg-gray-50 text-gray-400 rounded-full hover:bg-gray-100 transition-colors shadow-sm active:scale-90 flex items-center justify-center"
-                title="Historique"
+                className="p-2.5 bg-amber-500 text-white rounded-full hover:bg-amber-600 transition-colors shadow-md active:scale-90 flex items-center justify-center"
+                title="Pause"
               >
-                <History className="w-4 h-4" />
+                <Pause className="w-4 h-4 fill-current" />
               </button>
-            </div>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                resetTimer();
+              }}
+              className="p-2.5 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors shadow-sm active:scale-90 flex items-center justify-center"
+              title="Réinitialiser"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowHistory(true);
+              }}
+              className="p-2.5 bg-gray-50 text-gray-400 rounded-full hover:bg-gray-100 transition-colors shadow-sm active:scale-90 flex items-center justify-center"
+              title="Historique"
+            >
+              <History className="w-4 h-4" />
+            </button>
           </div>
 
           {sessionStartTime > 0 && (
@@ -913,13 +913,10 @@ export default function App() {
 
               <div className="p-4 border-t">
                 <button
-                  onClick={() => {
-                    setTimerHistory([]);
-                    localStorage.removeItem('timerHistory');
-                  }}
-                  className="w-full py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-colors text-sm"
+                  onClick={() => setShowHistory(false)}
+                  className="w-full py-3 bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 rounded-xl transition-colors text-sm"
                 >
-                  Effacer l'historique
+                  Fermer
                 </button>
               </div>
             </motion.div>
