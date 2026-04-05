@@ -539,9 +539,8 @@ export default function App() {
     <div className="relative h-[100dvh] w-full bg-gray-100 font-sans overflow-hidden">
       {/* Map Container */}
       <div className="absolute inset-0 z-0">
-        <MapContainer center={[48.8566, 2.3522]} zoom={17} scrollWheelZoom={true} zoomControl={false}>
+        <MapContainer center={[48.8566, 2.3522]} zoom={17} scrollWheelZoom={true} zoomControl={false} attributionControl={false}>
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           
@@ -748,30 +747,31 @@ export default function App() {
       </AnimatePresence>
 
       {/* Countdown Timer (Bottom Center) */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-[350px] px-2">
-        <div className="bg-white px-4 py-3 rounded-2xl shadow-2xl border border-gray-100 flex flex-col items-center gap-3 pointer-events-auto cursor-default">
-          {/* Timer Display Row */}
-          <div 
-            className="flex flex-col items-center cursor-pointer hover:bg-gray-50 px-4 py-1 rounded-xl transition-colors w-full"
-            onClick={() => {
-              const totalMins = Math.floor(totalCountdownTime / 60000);
-              setEditHours(Math.floor(totalMins / 60).toString());
-              setEditMinutes((totalMins % 60).toString());
-              setShowTimeEditor(true);
-            }}
-            title="Cliquer pour éditer le temps"
-          >
-            <span className={`text-2xl font-mono font-bold tabular-nums leading-none ${
-              remainingTime <= 0 
-                ? 'text-red-600 animate-pulse' 
-                : remainingTime <= 15 * 60 * 1000 
-                  ? 'text-amber-500' 
-                  : 'text-gray-800'
-            }`}>
-              {formatTime(remainingTime)}
-            </span>
-          </div>
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-[350px] px-2 flex flex-col items-center gap-2">
+        {/* Timer Display Row (Separated) */}
+        <div 
+          className="flex flex-col items-center cursor-pointer bg-gray-900 px-6 py-2 rounded-xl transition-all hover:bg-black shadow-2xl pointer-events-auto border border-white/10"
+          onClick={() => {
+            const totalMins = Math.floor(totalCountdownTime / 60000);
+            setEditHours(Math.floor(totalMins / 60).toString());
+            setEditMinutes((totalMins % 60).toString());
+            setShowTimeEditor(true);
+          }}
+          title="Cliquer pour éditer le temps"
+        >
+          <span className={`text-xl font-mono font-bold tabular-nums leading-none ${
+            remainingTime <= 0 
+              ? 'text-red-500 animate-pulse' 
+              : remainingTime <= 15 * 60 * 1000 
+                ? 'text-amber-400' 
+                : 'text-white'
+          }`}>
+            {formatTime(remainingTime)}
+          </span>
+        </div>
 
+        {/* Buttons Block */}
+        <div className="bg-white px-4 py-3 rounded-2xl shadow-2xl border border-gray-100 flex flex-col items-center gap-3 pointer-events-auto cursor-default">
           {/* Buttons Row */}
           <div className="flex items-center justify-center w-full gap-1.5">
             <a
@@ -1050,16 +1050,16 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Controls Container (Bottom Right) */}
-      <div className="absolute bottom-36 sm:bottom-12 right-4 z-10 flex flex-col gap-4 items-end pointer-events-none max-w-[calc(100vw-2rem)]">
+      {/* Controls Container (Top Right) */}
+      <div className="absolute top-4 right-4 z-10 flex flex-col gap-4 items-end pointer-events-none max-w-[calc(100vw-2rem)]">
         <div className="flex flex-col gap-4 pointer-events-auto items-end w-full">
           {!isAdmin ? (
             <button
               onClick={() => setShowLogin(true)}
-              className="bg-white/90 backdrop-blur-md p-4 rounded-full shadow-lg hover:bg-white transition-colors text-gray-700 active:scale-95"
+              className="bg-white/90 backdrop-blur-md p-3 sm:p-4 rounded-full shadow-lg hover:bg-white transition-colors text-gray-700 active:scale-95"
               title="Admin Login"
             >
-              <Settings className="w-6 h-6" />
+              <Settings className="w-5 h-5 sm:w-6 h-6" />
             </button>
           ) : (
             <div className="flex flex-col gap-2 items-end w-full">
