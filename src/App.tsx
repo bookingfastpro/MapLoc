@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, CircleMarker, useMap, useMapEvents, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { Zone, UserPosition, Place } from './types';
-import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload, ChevronDown, ChevronUp, Phone } from 'lucide-react';
+import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload, ChevronDown, ChevronUp, Phone, Timer, Play, Pause, RotateCcw } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle } from 'lucide-react';
@@ -131,6 +131,71 @@ export default function App() {
   const [shouldCenter, setShouldCenter] = useState(true);
   const [activeWarning, setActiveWarning] = useState<Zone | null>(null);
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
+
+  // Timer state
+  const [timerRunning, setTimerRunning] = useState(() => localStorage.getItem('timerRunning') === 'true');
+  const [timerStartTime, setTimerStartTime] = useState(() => Number(localStorage.getItem('timerStartTime')) || 0);
+  const [sessionStartTime, setSessionStartTime] = useState(() => Number(localStorage.getItem('sessionStartTime')) || 0);
+  const [timerAccumulated, setTimerAccumulated] = useState(() => Number(localStorage.getItem('timerAccumulated')) || 0);
+  const [elapsedTime, setElapsedTime] = useState(0);
+
+  // Update elapsed time every second
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (timerRunning) {
+      interval = setInterval(() => {
+        setElapsedTime(timerAccumulated + (Date.now() - timerStartTime));
+      }, 100);
+    } else {
+      setElapsedTime(timerAccumulated);
+    }
+    return () => clearInterval(interval);
+  }, [timerRunning, timerStartTime, timerAccumulated]);
+
+  // Persist timer state
+  useEffect(() => {
+    localStorage.setItem('timerRunning', String(timerRunning));
+    localStorage.setItem('timerStartTime', String(timerStartTime));
+    localStorage.setItem('sessionStartTime', String(sessionStartTime));
+    localStorage.setItem('timerAccumulated', String(timerAccumulated));
+  }, [timerRunning, timerStartTime, sessionStartTime, timerAccumulated]);
+
+  const startTimer = () => {
+    const now = Date.now();
+    if (sessionStartTime === 0) {
+      setSessionStartTime(now);
+    }
+    setTimerStartTime(now);
+    setTimerRunning(true);
+  };
+
+  const pauseTimer = () => {
+    const now = Date.now();
+    setTimerAccumulated(prev => prev + (now - timerStartTime));
+    setTimerRunning(false);
+  };
+
+  const resetTimer = () => {
+    setTimerRunning(false);
+    setTimerStartTime(0);
+    setSessionStartTime(0);
+    setTimerAccumulated(0);
+    setElapsedTime(0);
+  };
+
+  const formatTime = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const formatStartTime = (timestamp: number) => {
+    if (timestamp === 0) return '--:--';
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  };
 
   // Modal state
   const [modal, setModal] = useState<{
@@ -589,6 +654,52 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Timer (Bottom Center) */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-none w-full max-w-[200px] px-4">
+        <div className="bg-white/90 backdrop-blur-md px-3 py-2 rounded-2xl shadow-xl border border-white/20 flex flex-col items-center gap-1 pointer-events-auto">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex flex-col">
+              <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Temps</span>
+              <span className="text-sm font-mono font-bold text-gray-800 tabular-nums">
+                {formatTime(elapsedTime)}
+              </span>
+            </div>
+            <div className="flex gap-1.5">
+              {!timerRunning ? (
+                <button
+                  onClick={startTimer}
+                  className="p-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-md active:scale-90"
+                  title="Démarrer"
+                >
+                  <Play className="w-3 h-3 fill-current" />
+                </button>
+              ) : (
+                <button
+                  onClick={pauseTimer}
+                  className="p-1.5 bg-amber-500 text-white rounded-full hover:bg-amber-600 transition-colors shadow-md active:scale-90"
+                  title="Pause"
+                >
+                  <Pause className="w-3 h-3 fill-current" />
+                </button>
+              )}
+              <button
+                onClick={resetTimer}
+                className="p-1.5 bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300 transition-colors shadow-md active:scale-90"
+                title="Réinitialiser"
+              >
+                <RotateCcw className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+          {sessionStartTime > 0 && (
+            <div className="flex items-center gap-1 border-t border-gray-100 w-full pt-1">
+              <span className="text-[8px] text-gray-400 font-medium">Départ:</span>
+              <span className="text-[8px] font-bold text-gray-600">{formatStartTime(sessionStartTime)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Login Modal */}
       <AnimatePresence>
         {showLogin && (
@@ -845,15 +956,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Call Button */}
-          <a
-            href="tel:+33970703989"
-            className="p-4 rounded-full shadow-2xl transition-all active:scale-90 pointer-events-auto bg-green-600 text-white hover:bg-green-700"
-            title="Appeler le support"
-          >
-            <Phone className="w-6 h-6" />
-          </a>
-
           {/* Floating Action Button for Location (Mobile) */}
           <button
             onClick={() => {
@@ -867,6 +969,17 @@ export default function App() {
             <MapPin className="w-6 h-6" />
           </button>
         </div>
+      </div>
+
+      {/* Call Button (Bottom Left) */}
+      <div className="absolute bottom-6 left-4 z-10 pointer-events-none">
+        <a
+          href="tel:+33970703989"
+          className="p-4 rounded-full shadow-2xl transition-all active:scale-90 pointer-events-auto bg-green-600 text-white hover:bg-green-700 flex items-center justify-center"
+          title="Appeler le support"
+        >
+          <Phone className="w-6 h-6" />
+        </a>
       </div>
 
       <style>{`
