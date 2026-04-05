@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, CircleMarker, useMap, useMapEvents, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
-import { Zone, UserPosition, Place } from './types';
-import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload, ChevronDown, ChevronUp, Phone, Timer, Play, Pause, RotateCcw } from 'lucide-react';
+import { Zone, UserPosition, Place, TimerHistoryEntry } from './types';
+import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload, ChevronDown, ChevronUp, Phone, Timer, Play, Pause, RotateCcw, History } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
 // Point-in-polygon algorithm (Ray Casting)
 function isPointInPolygon(point: [number, number], polygon: [number, number][]) {
@@ -132,25 +133,41 @@ export default function App() {
   const [activeWarning, setActiveWarning] = useState<Zone | null>(null);
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
 
-  // Timer state
+  // Timer state (Countdown)
   const [timerRunning, setTimerRunning] = useState(() => localStorage.getItem('timerRunning') === 'true');
   const [timerStartTime, setTimerStartTime] = useState(() => Number(localStorage.getItem('timerStartTime')) || 0);
   const [sessionStartTime, setSessionStartTime] = useState(() => Number(localStorage.getItem('sessionStartTime')) || 0);
   const [timerAccumulated, setTimerAccumulated] = useState(() => Number(localStorage.getItem('timerAccumulated')) || 0);
-  const [elapsedTime, setElapsedTime] = useState(0);
+  const [totalCountdownTime, setTotalCountdownTime] = useState(() => Number(localStorage.getItem('totalCountdownTime')) || 30 * 60 * 1000);
+  const [remainingTime, setRemainingTime] = useState(0);
 
-  // Update elapsed time every second
+  // Timer History state
+  const [timerHistory, setTimerHistory] = useState<TimerHistoryEntry[]>(() => {
+    const saved = localStorage.getItem('timerHistory');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Update remaining time every second
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (timerRunning) {
       interval = setInterval(() => {
-        setElapsedTime(timerAccumulated + (Date.now() - timerStartTime));
+        const elapsed = timerAccumulated + (Date.now() - timerStartTime);
+        const remaining = Math.max(0, totalCountdownTime - elapsed);
+        setRemainingTime(remaining);
+        if (remaining <= 0) {
+          setTimerRunning(false);
+          setTimerAccumulated(totalCountdownTime);
+          clearInterval(interval);
+        }
       }, 100);
     } else {
-      setElapsedTime(timerAccumulated);
+      const remaining = Math.max(0, totalCountdownTime - timerAccumulated);
+      setRemainingTime(remaining);
     }
     return () => clearInterval(interval);
-  }, [timerRunning, timerStartTime, timerAccumulated]);
+  }, [timerRunning, timerStartTime, timerAccumulated, totalCountdownTime]);
 
   // Persist timer state
   useEffect(() => {
@@ -158,9 +175,12 @@ export default function App() {
     localStorage.setItem('timerStartTime', String(timerStartTime));
     localStorage.setItem('sessionStartTime', String(sessionStartTime));
     localStorage.setItem('timerAccumulated', String(timerAccumulated));
-  }, [timerRunning, timerStartTime, sessionStartTime, timerAccumulated]);
+    localStorage.setItem('totalCountdownTime', String(totalCountdownTime));
+    localStorage.setItem('timerHistory', JSON.stringify(timerHistory));
+  }, [timerRunning, timerStartTime, sessionStartTime, timerAccumulated, totalCountdownTime, timerHistory]);
 
   const startTimer = () => {
+    if (remainingTime <= 0) return;
     const now = Date.now();
     if (sessionStartTime === 0) {
       setSessionStartTime(now);
@@ -176,15 +196,37 @@ export default function App() {
   };
 
   const resetTimer = () => {
+    if (timerAccumulated > 0 || timerRunning) {
+      const entry: TimerHistoryEntry = {
+        id: uuidv4(),
+        startTime: sessionStartTime || Date.now(),
+        endTime: Date.now(),
+        duration: timerRunning ? timerAccumulated + (Date.now() - timerStartTime) : timerAccumulated,
+        initialCountdown: totalCountdownTime
+      };
+      setTimerHistory(prev => [entry, ...prev].slice(0, 50)); // Keep last 50
+    }
     setTimerRunning(false);
     setTimerStartTime(0);
     setSessionStartTime(0);
     setTimerAccumulated(0);
-    setElapsedTime(0);
+    setRemainingTime(totalCountdownTime);
+  };
+
+  const addTime = (minutes: number) => {
+    const msToAdd = minutes * 60 * 1000;
+    setTotalCountdownTime(prev => prev + msToAdd);
+  };
+
+  const removeTime = (minutes: number) => {
+    const msToRemove = minutes * 60 * 1000;
+    setTotalCountdownTime(prev => Math.max(0, prev - msToRemove));
+    // If we remove more time than already elapsed, we might need to adjust accumulated
+    // But for simplicity, let's just adjust the total.
   };
 
   const formatTime = (ms: number) => {
-    const totalSeconds = Math.floor(ms / 1000);
+    const totalSeconds = Math.ceil(ms / 1000);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
@@ -224,6 +266,7 @@ export default function App() {
   // Place state
   const [isAddingPlace, setIsAddingPlace] = useState(false);
   const [newPlaceName, setNewPlaceName] = useState('');
+  const [newPlaceStopRadius, setNewPlaceStopRadius] = useState<number>(0);
   const [newPlacePos, setNewPlacePos] = useState<[number, number] | null>(null);
 
   // Fetch zones
@@ -291,7 +334,21 @@ export default function App() {
     } else {
       setActiveWarning(null);
     }
-  }, [userPos, zones]);
+
+    // Stop timer if in a place stop radius
+    if (userPos && timerRunning && places.length > 0) {
+      const stopPlace = places.find(p => {
+        if (!p.stopRadius || p.stopRadius <= 0) return false;
+        const dist = L.latLng(userPos.lat, userPos.lng).distanceTo(L.latLng(p.lat, p.lng));
+        return dist <= p.stopRadius;
+      });
+
+      if (stopPlace) {
+        pauseTimer();
+        showAlert('Timer Arrêté', `Vous êtes entré dans la zone de ${stopPlace.name}. Le compte à rebours a été mis en pause.`);
+      }
+    }
+  }, [userPos, zones, places, timerRunning]);
 
   // Auth check
   useEffect(() => {
@@ -350,7 +407,8 @@ export default function App() {
       const placeData = {
         name: newPlaceName,
         lat: newPlacePos[0],
-        lng: newPlacePos[1]
+        lng: newPlacePos[1],
+        stopRadius: newPlaceStopRadius
       };
       await axios.post('/api/places', placeData, {
         headers: { Authorization: `Bearer ${token}` }
@@ -359,6 +417,7 @@ export default function App() {
       setIsAddingPlace(false);
       setNewPlacePos(null);
       setNewPlaceName('');
+      setNewPlaceStopRadius(0);
     } catch (err) {
       console.error('Failed to save place', err);
     }
@@ -495,26 +554,45 @@ export default function App() {
 
           {/* Existing Places */}
           {places.map((place) => (
-            <Marker 
-              key={place.id} 
-              position={[place.lat, place.lng]}
-              icon={L.divIcon({
-                className: 'place-marker',
-                html: `
-                  <div class="flex flex-col items-center">
-                    <div class="bg-indigo-600 p-2 rounded-full shadow-lg border-2 border-white">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            <React.Fragment key={place.id}>
+              <Marker 
+                position={[place.lat, place.lng]}
+                icon={L.divIcon({
+                  className: 'place-marker',
+                  html: `
+                    <div class="flex flex-col items-center">
+                      <div class="bg-indigo-600 p-2 rounded-full shadow-lg border-2 border-white">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                      </div>
                     </div>
+                  `,
+                  iconSize: [32, 32],
+                  iconAnchor: [16, 16]
+                })}
+              >
+                <Tooltip permanent direction="top" offset={[0, -14]} className="place-tooltip">
+                  <div className="flex flex-col items-center">
+                    <span className="font-bold text-xs text-indigo-700 px-1">{place.name}</span>
+                    {place.stopRadius && place.stopRadius > 0 && (
+                      <span className="text-[8px] text-gray-500 italic">Arrêt: {place.stopRadius}m</span>
+                    )}
                   </div>
-                `,
-                iconSize: [32, 32],
-                iconAnchor: [16, 16]
-              })}
-            >
-              <Tooltip permanent direction="top" offset={[0, -14]} className="place-tooltip">
-                <span className="font-bold text-xs text-indigo-700 px-1">{place.name}</span>
-              </Tooltip>
-            </Marker>
+                </Tooltip>
+              </Marker>
+              {place.stopRadius && place.stopRadius > 0 && (
+                <CircleMarker
+                  center={[place.lat, place.lng]}
+                  radius={place.stopRadius}
+                  pathOptions={{
+                    color: '#4f46e5',
+                    fillColor: '#4f46e5',
+                    fillOpacity: 0.1,
+                    dashArray: '5, 10',
+                    weight: 1
+                  }}
+                />
+              )}
+            </React.Fragment>
           ))}
 
           {/* New Place Preview */}
@@ -654,21 +732,22 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Timer (Bottom Center) */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-none w-full max-w-[200px] px-4">
-        <div className="bg-white/90 backdrop-blur-md px-3 py-2 rounded-2xl shadow-xl border border-white/20 flex flex-col items-center gap-1 pointer-events-auto">
+      {/* Countdown Timer (Bottom Center) */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-none w-full max-w-[240px] px-4">
+        <div className="bg-white/90 backdrop-blur-md px-3 py-2 rounded-2xl shadow-xl border border-white/20 flex flex-col items-center gap-2 pointer-events-auto">
           <div className="flex items-center justify-between w-full">
             <div className="flex flex-col">
-              <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Temps</span>
-              <span className="text-sm font-mono font-bold text-gray-800 tabular-nums">
-                {formatTime(elapsedTime)}
+              <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Compte à rebours</span>
+              <span className={`text-sm font-mono font-bold tabular-nums ${remainingTime < 60000 ? 'text-red-600 animate-pulse' : 'text-gray-800'}`}>
+                {formatTime(remainingTime)}
               </span>
             </div>
             <div className="flex gap-1.5">
               {!timerRunning ? (
                 <button
                   onClick={startTimer}
-                  className="p-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-md active:scale-90"
+                  disabled={remainingTime <= 0}
+                  className="p-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-md active:scale-90 disabled:opacity-50"
                   title="Démarrer"
                 >
                   <Play className="w-3 h-3 fill-current" />
@@ -689,16 +768,120 @@ export default function App() {
               >
                 <RotateCcw className="w-3 h-3" />
               </button>
+              <button
+                onClick={() => setShowHistory(true)}
+                className="p-1.5 bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 transition-colors shadow-md active:scale-90"
+                title="Historique"
+              >
+                <History className="w-3 h-3" />
+              </button>
             </div>
           </div>
+
+          {/* Time Selection Controls */}
+          <div className="flex items-center justify-between w-full gap-2 border-t border-gray-100 pt-2">
+            <button
+              onClick={() => removeTime(30)}
+              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 py-1 rounded-lg text-[8px] font-bold transition-colors"
+            >
+              -30 MIN
+            </button>
+            <button
+              onClick={() => addTime(30)}
+              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 py-1 rounded-lg text-[8px] font-bold transition-colors"
+            >
+              +30 MIN
+            </button>
+          </div>
+
           {sessionStartTime > 0 && (
-            <div className="flex items-center gap-1 border-t border-gray-100 w-full pt-1">
+            <div className="flex items-center gap-1 w-full justify-center">
               <span className="text-[8px] text-gray-400 font-medium">Départ:</span>
               <span className="text-[8px] font-bold text-gray-600">{formatStartTime(sessionStartTime)}</span>
             </div>
           )}
         </div>
       </div>
+
+      {/* History Modal */}
+      <AnimatePresence>
+        {showHistory && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md relative flex flex-col max-h-[80vh]"
+            >
+              <div className="p-6 border-b flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <History className="w-5 h-5 text-blue-600" />
+                  <h2 className="text-xl font-bold text-gray-800">Historique</h2>
+                </div>
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                {timerHistory.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400">
+                    <History className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                    <p>Aucun historique disponible</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {timerHistory.map((entry) => (
+                      <div key={entry.id} className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                            {new Date(entry.startTime).toLocaleDateString('fr-FR')}
+                          </span>
+                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                            Initial: {formatTime(entry.initialCountdown)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <div className="flex flex-col">
+                            <span className="text-xs text-gray-500">Départ: {formatStartTime(entry.startTime)}</span>
+                            <span className="text-xs text-gray-500">Fin: {formatStartTime(entry.endTime)}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-mono font-bold text-gray-800">
+                              {formatTime(entry.duration)}
+                            </span>
+                            <p className="text-[9px] text-gray-400 uppercase font-bold">Écoulé</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t">
+                <button
+                  onClick={() => {
+                    setTimerHistory([]);
+                    localStorage.removeItem('timerHistory');
+                  }}
+                  className="w-full py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-colors text-sm"
+                >
+                  Effacer l'historique
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Login Modal */}
       <AnimatePresence>
@@ -882,6 +1065,16 @@ export default function App() {
                             placeholder="Nom du lieu"
                             className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           />
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-bold text-gray-400 uppercase">Rayon d'arrêt (mètres)</label>
+                            <input
+                              type="number"
+                              value={newPlaceStopRadius}
+                              onChange={(e) => setNewPlaceStopRadius(Number(e.target.value))}
+                              placeholder="Rayon (ex: 50)"
+                              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
                           <div className="flex gap-2">
                             <button
                               onClick={savePlace}
@@ -920,7 +1113,12 @@ export default function App() {
                             <div key={p.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100 group">
                               <div className="flex items-center gap-2 overflow-hidden cursor-pointer flex-1">
                                 <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
-                                <span className="text-[10px] font-medium text-gray-700 truncate">{p.name}</span>
+                                <div className="flex flex-col overflow-hidden">
+                                  <span className="text-[10px] font-medium text-gray-700 truncate">{p.name}</span>
+                                  {p.stopRadius && p.stopRadius > 0 && (
+                                    <span className="text-[8px] text-indigo-400 font-bold uppercase">Arrêt: {p.stopRadius}m</span>
+                                  )}
+                                </div>
                               </div>
                               <button onClick={() => deletePlace(p.id)} className="text-gray-400 hover:text-red-500 p-1">
                                 <Trash2 className="w-3 h-3" />

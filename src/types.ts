@@ -10,6 +10,15 @@ export interface Place {
   name: string;
   lat: number;
   lng: number;
+  stopRadius?: number; // in meters
+}
+
+export interface TimerHistoryEntry {
+  id: string;
+  startTime: number;
+  endTime: number;
+  duration: number; // actual elapsed time in ms
+  initialCountdown: number; // initial set time in ms
 }
 
 export interface UserPosition {
