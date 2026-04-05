@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, CircleMarker, useMap, useMapEvents, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { Zone, UserPosition, Place } from './types';
-import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload } from 'lucide-react';
+import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload, ChevronDown, ChevronUp } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle } from 'lucide-react';
@@ -38,18 +38,24 @@ L.Marker.prototype.options.icon = DefaultIcon;
 const createUserIcon = (heading: number | null, isWarning: boolean) => {
   const rotation = heading !== null ? `transform: rotate(${heading}deg);` : 'display: none;';
   const warningClass = isWarning ? 'warning' : '';
+  const arrowColor = isWarning ? '#f97316' : '#3b82f6';
+  
   return L.divIcon({
     className: 'user-marker-container',
     html: `
       <div class="user-marker ${warningClass}">
         <div class="user-marker-pulse"></div>
         <div class="user-marker-heading" style="${rotation}">
-          <div class="user-marker-arrow"></div>
+          <div class="user-marker-arrow">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2L4.5 20.29L5.21 21L12 18L18.79 21L19.5 20.29L12 2Z" fill="${arrowColor}" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+            </svg>
+          </div>
         </div>
       </div>
     `,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8]
+    iconSize: [32, 32],
+    iconAnchor: [16, 16]
   });
 };
 
@@ -124,6 +130,24 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [shouldCenter, setShouldCenter] = useState(true);
   const [activeWarning, setActiveWarning] = useState<Zone | null>(null);
+  const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
+
+  // Modal state
+  const [modal, setModal] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    onConfirm?: () => void;
+    type: 'alert' | 'confirm';
+  }>({ show: false, title: '', message: '', type: 'alert' });
+
+  const showAlert = (title: string, message: string) => {
+    setModal({ show: true, title, message, type: 'alert' });
+  };
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setModal({ show: true, title, message, onConfirm, type: 'confirm' });
+  };
 
   // Drawing state
   const [isDrawing, setIsDrawing] = useState(false);
@@ -276,14 +300,16 @@ export default function App() {
   };
 
   const deletePlace = async (id: string) => {
-    try {
-      await axios.delete(`/api/places/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      fetchPlaces();
-    } catch (err) {
-      console.error('Failed to delete place', err);
-    }
+    showConfirm('Supprimer le lieu', 'Êtes-vous sûr de vouloir supprimer ce lieu ?', async () => {
+      try {
+        await axios.delete(`/api/places/${id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        fetchPlaces();
+      } catch (err) {
+        console.error('Failed to delete place', err);
+      }
+    });
   };
 
   const updatePoint = (idx: number, lat: number, lng: number) => {
@@ -294,7 +320,7 @@ export default function App() {
 
   const saveZone = async () => {
     if (newZonePoints.length < 3) {
-      alert('Un polygone doit avoir au moins 3 points');
+      showAlert('Erreur', 'Un polygone doit avoir au moins 3 points');
       return;
     }
     try {
@@ -325,15 +351,16 @@ export default function App() {
   };
 
   const deleteZone = async (id: string) => {
-    if (!confirm('Supprimer cette zone ?')) return;
-    try {
-      await axios.delete(`/api/zones/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      fetchZones();
-    } catch (err) {
-      console.error('Failed to delete zone', err);
-    }
+    showConfirm('Supprimer la zone', 'Êtes-vous sûr de vouloir supprimer cette zone ?', async () => {
+      try {
+        await axios.delete(`/api/zones/${id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        fetchZones();
+      } catch (err) {
+        console.error('Failed to delete zone', err);
+      }
+    });
   };
 
   const exportZones = () => {
@@ -358,10 +385,10 @@ export default function App() {
           headers: { Authorization: `Bearer ${token}` }
         });
         fetchZones();
-        alert('Importation réussie !');
+        showAlert('Succès', 'Importation réussie !');
       } catch (err) {
         console.error('Failed to import zones', err);
-        alert('Erreur lors de l\'importation. Vérifiez le format du fichier.');
+        showAlert('Erreur', 'Erreur lors de l\'importation. Vérifiez le format du fichier.');
       }
     };
     reader.readAsText(file);
@@ -370,10 +397,10 @@ export default function App() {
   };
 
   return (
-    <div className="relative h-screen w-screen bg-gray-100 font-sans overflow-hidden">
+    <div className="relative h-[100dvh] w-full bg-gray-100 font-sans overflow-hidden">
       {/* Map Container */}
       <div className="absolute inset-0 z-0">
-        <MapContainer center={[48.8566, 2.3522]} zoom={18} scrollWheelZoom={true}>
+        <MapContainer center={[48.8566, 2.3522]} zoom={18} scrollWheelZoom={true} zoomControl={false}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -485,24 +512,79 @@ export default function App() {
         {activeWarning && (
           <motion.div
             initial={{ y: -100, opacity: 0, x: '-50%' }}
-            animate={{ y: 60, opacity: 1, x: '-50%' }}
+            animate={{ y: 16, opacity: 1, x: '-50%' }}
             exit={{ y: -100, opacity: 0, x: '-50%' }}
-            className="absolute top-0 left-1/2 z-50 w-full max-w-md px-4 pointer-events-none"
+            transition={{ type: 'spring', damping: 20, stiffness: 120 }}
+            className="absolute top-0 left-1/2 z-50 w-full max-w-sm px-4 pointer-events-none"
           >
-            <div className={`${activeWarning.color === 'red' ? 'bg-red-600 border-red-400/50' : 'bg-yellow-500 border-yellow-300/50'} text-white p-4 rounded-2xl shadow-2xl flex items-center gap-4 border-2 backdrop-blur-md`}>
-              <div className="bg-white/20 p-2 rounded-xl">
-                <AlertTriangle className="w-6 h-6 animate-pulse" />
+            <div className={`
+              relative overflow-hidden
+              ${activeWarning.color === 'red' 
+                ? 'bg-red-600/90 border-red-400/30 shadow-[0_8px_32px_rgba(220,38,38,0.4)]' 
+                : 'bg-amber-500/90 border-amber-300/30 shadow-[0_8px_32px_rgba(245,158,11,0.4)]'
+              } 
+              text-white p-3.5 rounded-[20px] flex items-center gap-3.5 border backdrop-blur-xl
+            `}>
+              {/* Subtle inner glow */}
+              <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none" />
+              
+              <div className="bg-white/20 p-2 rounded-xl shadow-inner shrink-0">
+                <AlertTriangle className="w-5 h-5 animate-pulse" />
               </div>
-              <div>
-                <p className="font-bold text-sm">
-                  {activeWarning.color === 'red' ? 'Alerte Zone Rouge !' : 'Alerte Zone Jaune !'}
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-xs tracking-tight uppercase mb-0.5">
+                  {activeWarning.color === 'red' ? 'Zone de Danger' : 'Zone de Vigilance'}
                 </p>
-                <p className="text-xs opacity-90">
-                  Vous êtes dans la zone <span className="font-black underline">"{activeWarning.name}"</span>. 
-                  Il faut revenir dans une zone verte.
+                <p className="text-[11px] leading-tight opacity-90 font-medium truncate">
+                  Vous êtes dans <span className="font-bold underline">"{activeWarning.name}"</span>. 
+                  Rejoignez une zone sûre.
                 </p>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Modal (Alert/Confirm) */}
+      <AnimatePresence>
+        {modal.show && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-sm"
+            >
+              <h3 className="text-xl font-bold text-gray-800 mb-2">{modal.title}</h3>
+              <p className="text-gray-600 text-sm mb-6">{modal.message}</p>
+              
+              <div className="flex gap-3">
+                {modal.type === 'confirm' && (
+                  <button
+                    onClick={() => setModal({ ...modal, show: false })}
+                    className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all"
+                  >
+                    Annuler
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (modal.type === 'confirm' && modal.onConfirm) {
+                      modal.onConfirm();
+                    }
+                    setModal({ ...modal, show: false });
+                  }}
+                  className={`flex-1 ${modal.type === 'confirm' ? 'bg-red-600' : 'bg-blue-600'} text-white py-3 rounded-xl font-bold shadow-lg hover:opacity-90 transition-all`}
+                >
+                  {modal.type === 'confirm' ? 'Supprimer' : 'OK'}
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -565,198 +647,218 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Admin Controls (Bottom Right) */}
-      <div className="absolute bottom-24 right-6 z-10 flex flex-col gap-2 items-end pointer-events-none">
-        <div className="flex flex-col gap-2 pointer-events-auto items-end">
+      {/* Controls Container (Bottom Right) */}
+      <div className="absolute bottom-6 right-4 z-10 flex flex-col gap-4 items-end pointer-events-none max-w-[calc(100vw-2rem)]">
+        <div className="flex flex-col gap-4 pointer-events-auto items-end w-full">
           {!isAdmin ? (
             <button
               onClick={() => setShowLogin(true)}
-              className="bg-white/90 backdrop-blur-md p-4 rounded-full shadow-lg hover:bg-white transition-colors text-gray-700"
+              className="bg-white/90 backdrop-blur-md p-4 rounded-full shadow-lg hover:bg-white transition-colors text-gray-700 active:scale-95"
               title="Admin Login"
             >
               <Settings className="w-6 h-6" />
             </button>
           ) : (
-            <div className="flex flex-col gap-2 items-end">
-              <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 w-64">
-                <div className="flex justify-between items-center mb-3">
-                  <h2 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
-                    <Settings className="w-4 h-4" /> Panel Admin
-                  </h2>
+            <div className="flex flex-col gap-2 items-end w-full">
+              <motion.div 
+                animate={{ height: isAdminPanelCollapsed ? '48px' : 'auto' }}
+                transition={{ type: 'spring', damping: 20, stiffness: 150 }}
+                className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-white/20 w-full max-w-[260px] overflow-hidden"
+              >
+                <div className="flex justify-between items-center p-4">
+                  <div 
+                    className="flex items-center gap-2 cursor-pointer flex-1"
+                    onClick={() => setIsAdminPanelCollapsed(!isAdminPanelCollapsed)}
+                  >
+                    <Settings className="w-4 h-4 text-gray-600" />
+                    <h2 className="font-bold text-gray-800 text-sm">Panel Admin</h2>
+                    {isAdminPanelCollapsed ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                  </div>
                   <button
                     onClick={handleLogout}
-                    className="text-red-500 hover:text-red-700 transition-colors"
+                    className="text-red-500 hover:text-red-700 transition-colors ml-2"
                     title="Logout"
                   >
                     <LogOut className="w-4 h-4" />
                   </button>
                 </div>
                 
-                {!isDrawing && !isAddingPlace ? (
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={startDrawing}
-                      className="w-full bg-blue-600 text-white py-2 px-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors text-xs"
+                <AnimatePresence>
+                  {!isAdminPanelCollapsed && (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="px-4 pb-4"
                     >
-                      <Plus className="w-4 h-4" /> Créer une zone
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsAddingPlace(true);
-                        setNewPlaceName(`Lieu ${places.length + 1}`);
-                        setNewPlacePos(null);
-                      }}
-                      className="w-full bg-indigo-600 text-white py-2 px-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors text-xs"
-                    >
-                      <MapPin className="w-4 h-4" /> Ajouter un lieu
-                    </button>
-                  </div>
-                ) : isDrawing ? (
-                  <div className="space-y-3">
-                    <h3 className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
-                      {editingZoneId ? 'Édition' : 'Création'}
-                    </h3>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setNewZoneColor('red')}
-                        className={`flex-1 py-1 rounded-lg text-[10px] font-bold border-2 transition-all ${newZoneColor === 'red' ? 'bg-red-500 border-red-700 text-white' : 'bg-red-100 border-transparent text-red-700'}`}
-                      >
-                        ROUGE
-                      </button>
-                      <button
-                        onClick={() => setNewZoneColor('yellow')}
-                        className={`flex-1 py-1 rounded-lg text-[10px] font-bold border-2 transition-all ${newZoneColor === 'yellow' ? 'bg-yellow-400 border-yellow-600 text-white' : 'bg-yellow-100 border-transparent text-yellow-700'}`}
-                      >
-                        JAUNE
-                      </button>
-                      <button
-                        onClick={() => setNewZoneColor('green')}
-                        className={`flex-1 py-1 rounded-lg text-[10px] font-bold border-2 transition-all ${newZoneColor === 'green' ? 'bg-green-500 border-green-700 text-white' : 'bg-green-100 border-transparent text-green-700'}`}
-                      >
-                        VERT
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={newZoneName}
-                      onChange={(e) => setNewZoneName(e.target.value)}
-                      placeholder="Nom de la zone"
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={saveZone}
-                        disabled={newZonePoints.length < 3}
-                        className="flex-1 bg-green-600 text-white py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-green-700 disabled:opacity-50"
-                      >
-                        <Save className="w-3 h-3" /> Sauver
-                      </button>
-                      <button
-                        onClick={() => setIsDrawing(false)}
-                        className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-gray-300"
-                      >
-                        <X className="w-3 h-3" /> Annuler
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <h3 className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                      Nouveau Lieu
-                    </h3>
-                    <p className="text-[10px] text-gray-500 italic">Cliquez sur la carte pour placer le lieu</p>
-                    <input
-                      type="text"
-                      value={newPlaceName}
-                      onChange={(e) => setNewPlaceName(e.target.value)}
-                      placeholder="Nom du lieu"
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={savePlace}
-                        disabled={!newPlacePos || !newPlaceName}
-                        className="flex-1 bg-green-600 text-white py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-green-700 disabled:opacity-50"
-                      >
-                        <Save className="w-3 h-3" /> Sauver
-                      </button>
-                      <button
-                        onClick={() => setIsAddingPlace(false)}
-                        className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-gray-300"
-                      >
-                        <X className="w-3 h-3" /> Annuler
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-4 border-t pt-4">
-                  <div className="flex gap-2 mb-4">
-                    <button
-                      onClick={exportZones}
-                      className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-[9px] font-bold flex items-center justify-center gap-1 hover:bg-gray-200"
-                    >
-                      <Download className="w-3 h-3" /> EXPORT
-                    </button>
-                    <label className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-[9px] font-bold flex items-center justify-center gap-1 hover:bg-gray-200 cursor-pointer">
-                      <Upload className="w-3 h-3" /> IMPORT
-                      <input type="file" accept=".json" onChange={importZones} className="hidden" />
-                    </label>
-                  </div>
-
-                  <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Lieux</h3>
-                  <div className="max-h-32 overflow-y-auto space-y-2 pr-1 custom-scrollbar mb-4">
-                    {places.map(p => (
-                      <div key={p.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100 group">
-                        <div className="flex items-center gap-2 overflow-hidden cursor-pointer flex-1">
-                          <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
-                          <span className="text-[10px] font-medium text-gray-700 truncate">{p.name}</span>
-                        </div>
-                        <button onClick={() => deletePlace(p.id)} className="text-gray-400 hover:text-red-500 p-1">
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Zones</h3>
-                  <div className="max-h-32 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                    {zones.map(z => (
-                      <div key={z.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100 group">
-                        <div className="flex items-center gap-2 overflow-hidden cursor-pointer flex-1" onClick={() => startEditing(z)}>
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${z.color === 'red' ? 'bg-red-500' : z.color === 'green' ? 'bg-green-500' : 'bg-yellow-400'}`} />
-                          <span className="text-[10px] font-medium text-gray-700 truncate group-hover:text-blue-600">{z.name}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => startEditing(z)} className="text-gray-400 hover:text-blue-500 p-1">
-                            <Settings className="w-3 h-3" />
+                      {!isDrawing && !isAddingPlace ? (
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={startDrawing}
+                            className="w-full bg-blue-600 text-white py-2 px-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors text-xs"
+                          >
+                            <Plus className="w-4 h-4" /> Créer une zone
                           </button>
-                          <button onClick={() => deleteZone(z.id)} className="text-gray-400 hover:text-red-500 p-1">
-                            <Trash2 className="w-3 h-3" />
+                          <button
+                            onClick={() => {
+                              setIsAddingPlace(true);
+                              setNewPlaceName(`Lieu ${places.length + 1}`);
+                              setNewPlacePos(null);
+                            }}
+                            className="w-full bg-indigo-600 text-white py-2 px-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors text-xs"
+                          >
+                            <MapPin className="w-4 h-4" /> Ajouter un lieu
                           </button>
                         </div>
+                      ) : isDrawing ? (
+                        <div className="space-y-3">
+                          <h3 className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
+                            {editingZoneId ? 'Édition' : 'Création'}
+                          </h3>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setNewZoneColor('red')}
+                              className={`flex-1 py-1 rounded-lg text-[10px] font-bold border-2 transition-all ${newZoneColor === 'red' ? 'bg-red-500 border-red-700 text-white' : 'bg-red-100 border-transparent text-red-700'}`}
+                            >
+                              ROUGE
+                            </button>
+                            <button
+                              onClick={() => setNewZoneColor('yellow')}
+                              className={`flex-1 py-1 rounded-lg text-[10px] font-bold border-2 transition-all ${newZoneColor === 'yellow' ? 'bg-yellow-400 border-yellow-600 text-white' : 'bg-yellow-100 border-transparent text-yellow-700'}`}
+                            >
+                              JAUNE
+                            </button>
+                            <button
+                              onClick={() => setNewZoneColor('green')}
+                              className={`flex-1 py-1 rounded-lg text-[10px] font-bold border-2 transition-all ${newZoneColor === 'green' ? 'bg-green-500 border-green-700 text-white' : 'bg-green-100 border-transparent text-green-700'}`}
+                            >
+                              VERT
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            value={newZoneName}
+                            onChange={(e) => setNewZoneName(e.target.value)}
+                            placeholder="Nom de la zone"
+                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={saveZone}
+                              disabled={newZonePoints.length < 3}
+                              className="flex-1 bg-green-600 text-white py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-green-700 disabled:opacity-50"
+                            >
+                              <Save className="w-3 h-3" /> Sauver
+                            </button>
+                            <button
+                              onClick={() => setIsDrawing(false)}
+                              className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-gray-300"
+                            >
+                              <X className="w-3 h-3" /> Annuler
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <h3 className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                            Nouveau Lieu
+                          </h3>
+                          <p className="text-[10px] text-gray-500 italic">Cliquez sur la carte pour placer le lieu</p>
+                          <input
+                            type="text"
+                            value={newPlaceName}
+                            onChange={(e) => setNewPlaceName(e.target.value)}
+                            placeholder="Nom du lieu"
+                            className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={savePlace}
+                              disabled={!newPlacePos || !newPlaceName}
+                              className="flex-1 bg-green-600 text-white py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-green-700 disabled:opacity-50"
+                            >
+                              <Save className="w-3 h-3" /> Sauver
+                            </button>
+                            <button
+                              onClick={() => setIsAddingPlace(false)}
+                              className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-gray-300"
+                            >
+                              <X className="w-3 h-3" /> Annuler
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-4 border-t pt-4">
+                        <div className="flex gap-2 mb-4">
+                          <button
+                            onClick={exportZones}
+                            className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-[9px] font-bold flex items-center justify-center gap-1 hover:bg-gray-200"
+                          >
+                            <Download className="w-3 h-3" /> EXPORT
+                          </button>
+                          <label className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-[9px] font-bold flex items-center justify-center gap-1 hover:bg-gray-200 cursor-pointer">
+                            <Upload className="w-3 h-3" /> IMPORT
+                            <input type="file" accept=".json" onChange={importZones} className="hidden" />
+                          </label>
+                        </div>
+
+                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Lieux</h3>
+                        <div className="max-h-32 overflow-y-auto space-y-2 pr-1 custom-scrollbar mb-4">
+                          {places.map(p => (
+                            <div key={p.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100 group">
+                              <div className="flex items-center gap-2 overflow-hidden cursor-pointer flex-1">
+                                <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
+                                <span className="text-[10px] font-medium text-gray-700 truncate">{p.name}</span>
+                              </div>
+                              <button onClick={() => deletePlace(p.id)} className="text-gray-400 hover:text-red-500 p-1">
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Zones</h3>
+                        <div className="max-h-32 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                          {zones.map(z => (
+                            <div key={z.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100 group">
+                              <div className="flex items-center gap-2 overflow-hidden cursor-pointer flex-1" onClick={() => startEditing(z)}>
+                                <div className={`w-2 h-2 rounded-full shrink-0 ${z.color === 'red' ? 'bg-red-500' : z.color === 'green' ? 'bg-green-500' : 'bg-yellow-400'}`} />
+                                <span className="text-[10px] font-medium text-gray-700 truncate group-hover:text-blue-600">{z.name}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => startEditing(z)} className="text-gray-400 hover:text-blue-500 p-1">
+                                  <Settings className="w-3 h-3" />
+                                </button>
+                                <button onClick={() => deleteZone(z.id)} className="text-gray-400 hover:text-red-500 p-1">
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
             </div>
           )}
+
+          {/* Floating Action Button for Location (Mobile) */}
+          <button
+            onClick={() => {
+              if (userPos) {
+                setShouldCenter(true);
+              }
+            }}
+            className={`p-4 rounded-full shadow-2xl transition-all active:scale-90 pointer-events-auto ${shouldCenter ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 hover:bg-blue-50'}`}
+            title="Recentrer sur ma position"
+          >
+            <MapPin className="w-6 h-6" />
+          </button>
         </div>
       </div>
-
-      {/* Floating Action Button for Location (Mobile) */}
-      <button
-        onClick={() => {
-          if (userPos) {
-            setShouldCenter(true);
-          }
-        }}
-        className={`absolute bottom-6 right-6 z-10 p-4 rounded-full shadow-2xl transition-all active:scale-90 pointer-events-auto ${shouldCenter ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 hover:bg-blue-50'}`}
-        title="Recentrer sur ma position"
-      >
-        <MapPin className="w-6 h-6" />
-      </button>
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
