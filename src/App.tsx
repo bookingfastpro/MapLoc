@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, CircleMarker, useMap, useMapEvents, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { Zone, UserPosition, Place, TimerHistoryEntry } from './types';
-import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload, ChevronDown, ChevronUp, Phone, Timer, Play, Pause, RotateCcw, History } from 'lucide-react';
+import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload, ChevronDown, ChevronUp, Phone, Timer, Play, RotateCcw, History } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle } from 'lucide-react';
@@ -187,10 +187,13 @@ export default function App() {
   };
 
   const pauseTimer = () => {
-    if (!timerRunning || timerStartTime === 0) return;
+    if (!timerRunning) return;
     const now = Date.now();
-    setTimerAccumulated(prev => prev + (now - timerStartTime));
+    if (timerStartTime > 0) {
+      setTimerAccumulated(prev => prev + (now - timerStartTime));
+    }
     setTimerRunning(false);
+    setTimerStartTime(0);
   };
 
   const resetTimer = () => {
@@ -199,7 +202,9 @@ export default function App() {
         id: uuidv4(),
         startTime: sessionStartTime || Date.now(),
         endTime: Date.now(),
-        duration: timerRunning ? timerAccumulated + (Date.now() - timerStartTime) : timerAccumulated,
+        duration: (timerRunning && timerStartTime > 0) 
+          ? timerAccumulated + (Date.now() - timerStartTime) 
+          : timerAccumulated,
         initialCountdown: totalCountdownTime
       };
       setTimerHistory(prev => [entry, ...prev].slice(0, 50)); // Keep last 50
@@ -750,7 +755,13 @@ export default function App() {
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-[350px] px-2 flex flex-col items-center gap-2">
         {/* Timer Display Row (Separated) */}
         <div 
-          className="flex flex-col items-center cursor-pointer bg-gray-900 px-6 py-2 rounded-xl transition-all hover:bg-black shadow-2xl pointer-events-auto border border-white/10"
+          className={`flex flex-col items-center cursor-pointer px-6 py-2 rounded-xl transition-all duration-500 shadow-2xl pointer-events-auto border ${
+            remainingTime <= 0 
+              ? 'bg-red-600 border-red-400 animate-pulse scale-110' 
+              : remainingTime <= 15 * 60 * 1000 
+                ? 'bg-amber-500 border-amber-300' 
+                : 'bg-gray-900 border-white/10 hover:bg-black'
+          }`}
           onClick={() => {
             const totalMins = Math.floor(totalCountdownTime / 60000);
             setEditHours(Math.floor(totalMins / 60).toString());
@@ -760,11 +771,9 @@ export default function App() {
           title="Cliquer pour éditer le temps"
         >
           <span className={`text-xl font-mono font-bold tabular-nums leading-none ${
-            remainingTime <= 0 
-              ? 'text-red-500 animate-pulse' 
-              : remainingTime <= 15 * 60 * 1000 
-                ? 'text-amber-400' 
-                : 'text-white'
+            remainingTime <= 0 || remainingTime <= 15 * 60 * 1000
+              ? 'text-white' 
+              : 'text-white'
           }`}>
             {formatTime(remainingTime)}
           </span>
@@ -785,6 +794,9 @@ export default function App() {
               onClick={() => {
                 if (userPos) {
                   setShouldCenter(true);
+                  if ("vibrate" in navigator) {
+                    navigator.vibrate(50);
+                  }
                 }
               }}
               className={`p-2.5 rounded-full shadow-sm transition-all active:scale-90 flex items-center justify-center ${shouldCenter ? 'bg-blue-600 text-white' : 'bg-gray-100 text-blue-600 hover:bg-gray-200'}`}
@@ -793,33 +805,29 @@ export default function App() {
               <MapPin className="w-4 h-4" />
             </button>
             <div className="w-[1px] h-5 bg-gray-200 mx-0.5 self-center" />
-            {!timerRunning ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!timerRunning) {
                   startTimer();
-                }}
-                className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-md active:scale-90 flex items-center justify-center"
-                title="Démarrer"
-              >
-                <Play className="w-4 h-4 fill-current" />
-              </button>
-            ) : (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  pauseTimer();
-                }}
-                className="p-2.5 bg-amber-500 text-white rounded-full hover:bg-amber-600 transition-colors shadow-md active:scale-90 flex items-center justify-center"
-                title="Pause"
-              >
-                <Pause className="w-4 h-4 fill-current" />
-              </button>
-            )}
+                  if ("vibrate" in navigator) navigator.vibrate(50);
+                }
+              }}
+              disabled={timerRunning}
+              className={`p-2.5 rounded-full shadow-md transition-all flex items-center justify-center ${
+                timerRunning 
+                  ? 'bg-gray-100 text-gray-300 cursor-not-allowed' 
+                  : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-90'
+              }`}
+              title={timerRunning ? "Timer en cours" : "Démarrer"}
+            >
+              <Play className="w-4 h-4 fill-current" />
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 resetTimer();
+                if ("vibrate" in navigator) navigator.vibrate(50);
               }}
               className="p-2.5 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors shadow-sm active:scale-90 flex items-center justify-center"
               title="Réinitialiser"
