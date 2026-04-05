@@ -147,23 +147,21 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
   const [showHistory, setShowHistory] = useState(false);
+  const [showTimeEditor, setShowTimeEditor] = useState(false);
+  const [editHours, setEditHours] = useState('0');
+  const [editMinutes, setEditMinutes] = useState('30');
 
   // Update remaining time every second
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (timerRunning) {
+    if (timerRunning && timerStartTime > 0) {
       interval = setInterval(() => {
         const elapsed = timerAccumulated + (Date.now() - timerStartTime);
-        const remaining = Math.max(0, totalCountdownTime - elapsed);
+        const remaining = totalCountdownTime - elapsed;
         setRemainingTime(remaining);
-        if (remaining <= 0) {
-          setTimerRunning(false);
-          setTimerAccumulated(totalCountdownTime);
-          clearInterval(interval);
-        }
       }, 100);
     } else {
-      const remaining = Math.max(0, totalCountdownTime - timerAccumulated);
+      const remaining = totalCountdownTime - timerAccumulated;
       setRemainingTime(remaining);
     }
     return () => clearInterval(interval);
@@ -180,7 +178,6 @@ export default function App() {
   }, [timerRunning, timerStartTime, sessionStartTime, timerAccumulated, totalCountdownTime, timerHistory]);
 
   const startTimer = () => {
-    if (remainingTime <= 0) return;
     const now = Date.now();
     if (sessionStartTime === 0) {
       setSessionStartTime(now);
@@ -190,6 +187,7 @@ export default function App() {
   };
 
   const pauseTimer = () => {
+    if (!timerRunning || timerStartTime === 0) return;
     const now = Date.now();
     setTimerAccumulated(prev => prev + (now - timerStartTime));
     setTimerRunning(false);
@@ -226,17 +224,34 @@ export default function App() {
   };
 
   const formatTime = (ms: number) => {
-    const totalSeconds = Math.ceil(ms / 1000);
+    const isNegative = ms < 0;
+    const absMs = Math.abs(ms);
+    const totalSeconds = Math.ceil(absMs / 1000);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    return isNegative ? `-${timeStr}` : timeStr;
   };
 
   const formatStartTime = (timestamp: number) => {
     if (timestamp === 0) return '--:--';
     const date = new Date(timestamp);
     return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const handleTimeEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const hrs = parseInt(editHours) || 0;
+    const mins = parseInt(editMinutes) || 0;
+    if (hrs >= 0 && mins >= 0 && (hrs > 0 || mins > 0)) {
+      setTotalCountdownTime((hrs * 60 + mins) * 60 * 1000);
+      setTimerAccumulated(0);
+      setTimerStartTime(0);
+      setSessionStartTime(0);
+      setTimerRunning(false);
+      setShowTimeEditor(false);
+    }
   };
 
   // Modal state
@@ -733,71 +748,100 @@ export default function App() {
       </AnimatePresence>
 
       {/* Countdown Timer (Bottom Center) */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-none w-full max-w-[240px] px-4">
-        <div className="bg-white/90 backdrop-blur-md px-3 py-2 rounded-2xl shadow-xl border border-white/20 flex flex-col items-center gap-2 pointer-events-auto">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex flex-col">
-              <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Compte à rebours</span>
-              <span className={`text-sm font-mono font-bold tabular-nums ${remainingTime < 60000 ? 'text-red-600 animate-pulse' : 'text-gray-800'}`}>
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none w-full max-w-[350px] px-2">
+        <div className="bg-white px-4 py-2.5 rounded-2xl shadow-2xl border border-gray-100 flex flex-col items-center gap-2 pointer-events-auto cursor-default">
+          <div className="flex items-center justify-between w-full gap-3">
+            <div 
+              className="flex flex-col cursor-pointer hover:bg-gray-50 p-1 rounded-lg transition-colors flex-1 min-w-0"
+              onClick={() => {
+                const totalMins = Math.floor(totalCountdownTime / 60000);
+                setEditHours(Math.floor(totalMins / 60).toString());
+                setEditMinutes((totalMins % 60).toString());
+                setShowTimeEditor(true);
+              }}
+              title="Cliquer pour éditer le temps"
+            >
+              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Compte à rebours</span>
+              <span className={`text-base font-mono font-bold tabular-nums leading-none ${
+                remainingTime <= 0 
+                  ? 'text-red-600 animate-pulse' 
+                  : remainingTime <= 15 * 60 * 1000 
+                    ? 'text-amber-500' 
+                    : 'text-gray-800'
+              }`}>
                 {formatTime(remainingTime)}
               </span>
             </div>
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5 shrink-0">
+              <a
+                href="tel:+33970703989"
+                className="p-2.5 bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors shadow-sm active:scale-90 flex items-center justify-center"
+                title="Appeler le support"
+              >
+                <Phone className="w-4 h-4" />
+              </a>
+              <button
+                onClick={() => {
+                  if (userPos) {
+                    setShouldCenter(true);
+                  }
+                }}
+                className={`p-2.5 rounded-full shadow-sm transition-all active:scale-90 flex items-center justify-center ${shouldCenter ? 'bg-blue-600 text-white' : 'bg-gray-100 text-blue-600 hover:bg-gray-200'}`}
+                title="Recentrer"
+              >
+                <MapPin className="w-4 h-4" />
+              </button>
+              <div className="w-[1px] h-5 bg-gray-200 mx-0.5 self-center" />
               {!timerRunning ? (
                 <button
-                  onClick={startTimer}
-                  disabled={remainingTime <= 0}
-                  className="p-1.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-md active:scale-90 disabled:opacity-50"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startTimer();
+                  }}
+                  className="p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-md active:scale-90 flex items-center justify-center"
                   title="Démarrer"
                 >
-                  <Play className="w-3 h-3 fill-current" />
+                  <Play className="w-4 h-4 fill-current" />
                 </button>
               ) : (
                 <button
-                  onClick={pauseTimer}
-                  className="p-1.5 bg-amber-500 text-white rounded-full hover:bg-amber-600 transition-colors shadow-md active:scale-90"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    pauseTimer();
+                  }}
+                  className="p-2.5 bg-amber-500 text-white rounded-full hover:bg-amber-600 transition-colors shadow-md active:scale-90 flex items-center justify-center"
                   title="Pause"
                 >
-                  <Pause className="w-3 h-3 fill-current" />
+                  <Pause className="w-4 h-4 fill-current" />
                 </button>
               )}
               <button
-                onClick={resetTimer}
-                className="p-1.5 bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300 transition-colors shadow-md active:scale-90"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  resetTimer();
+                }}
+                className="p-2.5 bg-gray-100 text-gray-600 rounded-full hover:bg-gray-200 transition-colors shadow-sm active:scale-90 flex items-center justify-center"
                 title="Réinitialiser"
               >
-                <RotateCcw className="w-3 h-3" />
+                <RotateCcw className="w-4 h-4" />
               </button>
               <button
-                onClick={() => setShowHistory(true)}
-                className="p-1.5 bg-gray-100 text-gray-500 rounded-full hover:bg-gray-200 transition-colors shadow-md active:scale-90"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowHistory(true);
+                }}
+                className="p-2.5 bg-gray-50 text-gray-400 rounded-full hover:bg-gray-100 transition-colors shadow-sm active:scale-90 flex items-center justify-center"
                 title="Historique"
               >
-                <History className="w-3 h-3" />
+                <History className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Time Selection Controls */}
-          <div className="flex items-center justify-between w-full gap-2 border-t border-gray-100 pt-2">
-            <button
-              onClick={() => removeTime(30)}
-              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 py-1 rounded-lg text-[8px] font-bold transition-colors"
-            >
-              -30 MIN
-            </button>
-            <button
-              onClick={() => addTime(30)}
-              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 py-1 rounded-lg text-[8px] font-bold transition-colors"
-            >
-              +30 MIN
-            </button>
-          </div>
-
           {sessionStartTime > 0 && (
-            <div className="flex items-center gap-1 w-full justify-center">
-              <span className="text-[8px] text-gray-400 font-medium">Départ:</span>
-              <span className="text-[8px] font-bold text-gray-600">{formatStartTime(sessionStartTime)}</span>
+            <div className="flex items-center gap-1 w-full justify-center border-t border-gray-50 pt-1">
+              <span className="text-[7px] text-gray-400 font-medium">Départ:</span>
+              <span className="text-[7px] font-bold text-gray-600">{formatStartTime(sessionStartTime)}</span>
             </div>
           )}
         </div>
@@ -883,6 +927,74 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Time Editor Modal */}
+      <AnimatePresence>
+        {showTimeEditor && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-xs"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-gray-800">Éditer le temps</h3>
+                <button onClick={() => setShowTimeEditor(false)} className="text-gray-400">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <form onSubmit={handleTimeEditSubmit} className="space-y-4">
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 text-center">Heures</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editHours}
+                      onChange={(e) => setEditHours(e.target.value)}
+                      className="w-full px-2 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-2xl font-mono font-bold"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex items-end pb-3 text-2xl font-bold text-gray-300">:</div>
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 text-center">Minutes</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={editMinutes}
+                      onChange={(e) => setEditMinutes(e.target.value)}
+                      className="w-full px-2 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-2xl font-mono font-bold"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTimeEditor(false)}
+                    className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold text-sm shadow-lg"
+                  >
+                    Valider
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Login Modal */}
       <AnimatePresence>
         {showLogin && (
@@ -942,7 +1054,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Controls Container (Bottom Right) */}
-      <div className="absolute bottom-6 right-4 z-10 flex flex-col gap-4 items-end pointer-events-none max-w-[calc(100vw-2rem)]">
+      <div className="absolute bottom-36 sm:bottom-12 right-4 z-10 flex flex-col gap-4 items-end pointer-events-none max-w-[calc(100vw-2rem)]">
         <div className="flex flex-col gap-4 pointer-events-auto items-end w-full">
           {!isAdmin ? (
             <button
@@ -1153,31 +1265,7 @@ export default function App() {
               </motion.div>
             </div>
           )}
-
-          {/* Floating Action Button for Location (Mobile) */}
-          <button
-            onClick={() => {
-              if (userPos) {
-                setShouldCenter(true);
-              }
-            }}
-            className={`p-4 rounded-full shadow-2xl transition-all active:scale-90 pointer-events-auto ${shouldCenter ? 'bg-blue-600 text-white' : 'bg-white text-blue-600 hover:bg-blue-50'}`}
-            title="Recentrer sur ma position"
-          >
-            <MapPin className="w-6 h-6" />
-          </button>
         </div>
-      </div>
-
-      {/* Call Button (Bottom Left) */}
-      <div className="absolute bottom-6 left-4 z-10 pointer-events-none">
-        <a
-          href="tel:+33970703989"
-          className="p-4 rounded-full shadow-2xl transition-all active:scale-90 pointer-events-auto bg-green-600 text-white hover:bg-green-700 flex items-center justify-center"
-          title="Appeler le support"
-        >
-          <Phone className="w-6 h-6" />
-        </a>
       </div>
 
       <style>{`
