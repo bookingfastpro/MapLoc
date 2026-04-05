@@ -1,7 +1,7 @@
 export interface Zone {
   id: string;
   name: string;
-  color: 'red' | 'green';
+  color: 'red' | 'green' | 'yellow';
   points: [number, number][]; // [lat, lng]
 }
 

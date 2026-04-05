@@ -35,12 +35,13 @@ let DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 // Custom User Marker
-const createUserIcon = (heading: number | null) => {
+const createUserIcon = (heading: number | null, isWarning: boolean) => {
   const rotation = heading !== null ? `transform: rotate(${heading}deg);` : 'display: none;';
+  const warningClass = isWarning ? 'warning' : '';
   return L.divIcon({
     className: 'user-marker-container',
     html: `
-      <div class="user-marker">
+      <div class="user-marker ${warningClass}">
         <div class="user-marker-pulse"></div>
         <div class="user-marker-heading" style="${rotation}">
           <div class="user-marker-arrow"></div>
@@ -65,7 +66,23 @@ function ChangeView({ center, shouldCenter }: { center: [number, number], should
   const map = useMap();
   useEffect(() => {
     if (shouldCenter) {
-      map.setView(center, 18);
+      const currentZoom = map.getZoom();
+      const targetZoom = currentZoom < 18 ? 18 : currentZoom;
+      
+      // If zoom is already correct, use panTo for smoother tracking
+      if (currentZoom === targetZoom) {
+        map.panTo(center, {
+          animate: true,
+          duration: 0.5,
+          noMoveStart: true
+        });
+      } else {
+        // If zoom needs changing, use setView
+        map.setView(center, targetZoom, {
+          animate: true,
+          duration: 1
+        });
+      }
     }
   }, [center, map, shouldCenter]);
   return null;
@@ -103,13 +120,13 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [shouldCenter, setShouldCenter] = useState(true);
-  const [activeWarning, setActiveWarning] = useState<string | null>(null);
+  const [activeWarning, setActiveWarning] = useState<Zone | null>(null);
 
   // Drawing state
   const [isDrawing, setIsDrawing] = useState(false);
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
   const [newZonePoints, setNewZonePoints] = useState<[number, number][]>([]);
-  const [newZoneColor, setNewZoneColor] = useState<'red' | 'green'>('red');
+  const [newZoneColor, setNewZoneColor] = useState<'red' | 'green' | 'yellow'>('red');
   const [newZoneName, setNewZoneName] = useState('');
 
   // Fetch zones
@@ -142,7 +159,11 @@ export default function App() {
           });
         },
         (err) => console.error('Geolocation error', err),
-        { enableHighAccuracy: true }
+        { 
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 5000
+        }
       );
       return () => navigator.geolocation.clearWatch(watchId);
     }
@@ -150,10 +171,10 @@ export default function App() {
 
   useEffect(() => {
     if (userPos && zones.length > 0) {
-      const redZones = zones.filter(z => z.color === 'red');
-      const currentZone = redZones.find(z => isPointInPolygon([userPos.lat, userPos.lng], z.points));
+      const warningZones = zones.filter(z => z.color === 'red' || z.color === 'yellow');
+      const currentZone = warningZones.find(z => isPointInPolygon([userPos.lat, userPos.lng], z.points));
       if (currentZone) {
-        setActiveWarning(currentZone.name);
+        setActiveWarning(currentZone);
       } else {
         setActiveWarning(null);
       }
@@ -306,7 +327,7 @@ export default function App() {
           {userPos && (
             <>
               <ChangeView center={[userPos.lat, userPos.lng]} shouldCenter={shouldCenter} />
-              <Marker position={[userPos.lat, userPos.lng]} icon={createUserIcon(userPos.heading)} />
+              <Marker position={[userPos.lat, userPos.lng]} icon={createUserIcon(userPos.heading, !!activeWarning)} />
             </>
           )}
 
@@ -316,8 +337,8 @@ export default function App() {
               key={zone.id}
               positions={zone.points}
               pathOptions={{
-                fillColor: zone.color === 'red' ? '#ef4444' : '#22c55e',
-                color: zone.color === 'red' ? '#b91c1c' : '#15803d',
+                fillColor: zone.color === 'red' ? '#ef4444' : zone.color === 'green' ? '#22c55e' : '#facc15',
+                color: zone.color === 'red' ? '#b91c1c' : zone.color === 'green' ? '#15803d' : '#a16207',
                 fillOpacity: 0.4
               }}
             >
@@ -331,8 +352,8 @@ export default function App() {
               <Polygon
                 positions={newZonePoints}
                 pathOptions={{
-                  fillColor: newZoneColor === 'red' ? '#ef4444' : '#22c55e',
-                  color: newZoneColor === 'red' ? '#b91c1c' : '#15803d',
+                  fillColor: newZoneColor === 'red' ? '#ef4444' : newZoneColor === 'green' ? '#22c55e' : '#facc15',
+                  color: newZoneColor === 'red' ? '#b91c1c' : newZoneColor === 'green' ? '#15803d' : '#a16207',
                   fillOpacity: 0.6,
                   dashArray: '5, 5'
                 }}
@@ -342,7 +363,7 @@ export default function App() {
                   key={idx}
                   position={point}
                   draggable={true}
-                  icon={createPointIcon(newZoneColor === 'red' ? '#ef4444' : '#22c55e')}
+                  icon={createPointIcon(newZoneColor === 'red' ? '#ef4444' : newZoneColor === 'green' ? '#22c55e' : '#facc15')}
                   eventHandlers={{
                     dragend: (e) => {
                       const marker = e.target;
@@ -365,7 +386,7 @@ export default function App() {
 
       {/* UI Overlays */}
       
-      {/* Red Zone Warning Notification */}
+      {/* Warning Notification */}
       <AnimatePresence>
         {activeWarning && (
           <motion.div
@@ -374,14 +395,16 @@ export default function App() {
             exit={{ y: -100, opacity: 0, x: '-50%' }}
             className="absolute top-0 left-1/2 z-50 w-full max-w-md px-4 pointer-events-none"
           >
-            <div className="bg-red-600 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-4 border-2 border-red-400/50 backdrop-blur-md">
+            <div className={`${activeWarning.color === 'red' ? 'bg-red-600 border-red-400/50' : 'bg-yellow-500 border-yellow-300/50'} text-white p-4 rounded-2xl shadow-2xl flex items-center gap-4 border-2 backdrop-blur-md`}>
               <div className="bg-white/20 p-2 rounded-xl">
                 <AlertTriangle className="w-6 h-6 animate-pulse" />
               </div>
               <div>
-                <p className="font-bold text-sm">Alerte Zone Rouge !</p>
+                <p className="font-bold text-sm">
+                  {activeWarning.color === 'red' ? 'Alerte Zone Rouge !' : 'Alerte Zone Jaune !'}
+                </p>
                 <p className="text-xs opacity-90">
-                  Vous êtes dans la zone <span className="font-black underline">"{activeWarning}"</span>. 
+                  Vous êtes dans la zone <span className="font-black underline">"{activeWarning.name}"</span>. 
                   Il faut revenir dans une zone verte.
                 </p>
               </div>
@@ -495,6 +518,12 @@ export default function App() {
                         ROUGE
                       </button>
                       <button
+                        onClick={() => setNewZoneColor('yellow')}
+                        className={`flex-1 py-1 rounded-lg text-[10px] font-bold border-2 transition-all ${newZoneColor === 'yellow' ? 'bg-yellow-400 border-yellow-600 text-white' : 'bg-yellow-100 border-transparent text-yellow-700'}`}
+                      >
+                        JAUNE
+                      </button>
+                      <button
                         onClick={() => setNewZoneColor('green')}
                         className={`flex-1 py-1 rounded-lg text-[10px] font-bold border-2 transition-all ${newZoneColor === 'green' ? 'bg-green-500 border-green-700 text-white' : 'bg-green-100 border-transparent text-green-700'}`}
                       >
@@ -545,7 +574,7 @@ export default function App() {
                     {zones.map(z => (
                       <div key={z.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100 group">
                         <div className="flex items-center gap-2 overflow-hidden cursor-pointer flex-1" onClick={() => startEditing(z)}>
-                          <div className={`w-2 h-2 rounded-full shrink-0 ${z.color === 'red' ? 'bg-red-500' : 'bg-green-500'}`} />
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${z.color === 'red' ? 'bg-red-500' : z.color === 'green' ? 'bg-green-500' : 'bg-yellow-400'}`} />
                           <span className="text-[10px] font-medium text-gray-700 truncate group-hover:text-blue-600">{z.name}</span>
                         </div>
                         <div className="flex items-center gap-1">
