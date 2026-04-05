@@ -150,6 +150,7 @@ export default function App() {
   const [showTimeEditor, setShowTimeEditor] = useState(false);
   const [editHours, setEditHours] = useState('0');
   const [editMinutes, setEditMinutes] = useState('30');
+  const [hasShown15MinAlert, setHasShown15MinAlert] = useState(false);
 
   // Update remaining time every second
   useEffect(() => {
@@ -166,6 +167,20 @@ export default function App() {
     }
     return () => clearInterval(interval);
   }, [timerRunning, timerStartTime, timerAccumulated, totalCountdownTime]);
+
+  useEffect(() => {
+    if (timerRunning && remainingTime <= 15 * 60 * 1000 && remainingTime > 14 * 60 * 1000 && !hasShown15MinAlert) {
+      showAlert('Attention', "Il ne reste que 15 minutes pour arriver au point de départ, il faut vite rentrer !");
+      setHasShown15MinAlert(true);
+      if ("vibrate" in navigator) {
+        navigator.vibrate([200, 100, 200, 100, 200]);
+      }
+    }
+    // Reset alert if time is added back
+    if (remainingTime > 15 * 60 * 1000 && hasShown15MinAlert) {
+      setHasShown15MinAlert(false);
+    }
+  }, [remainingTime, timerRunning, hasShown15MinAlert]);
 
   // Persist timer state
   useEffect(() => {
@@ -214,6 +229,7 @@ export default function App() {
     setSessionStartTime(0);
     setTimerAccumulated(0);
     setRemainingTime(totalCountdownTime);
+    setHasShown15MinAlert(false);
   };
 
   const addTime = (minutes: number) => {
