@@ -8,10 +8,14 @@ import { v4 as uuidv4 } from "uuid";
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const DATA_FILE = path.join(process.cwd(), "zones.json");
+const PLACES_FILE = path.join(process.cwd(), "places.json");
 
 // Initial data if file doesn't exist
 if (!fs.existsSync(DATA_FILE)) {
   fs.writeFileSync(DATA_FILE, JSON.stringify([]));
+}
+if (!fs.existsSync(PLACES_FILE)) {
+  fs.writeFileSync(PLACES_FILE, JSON.stringify([]));
 }
 
 app.use(cors());
@@ -46,6 +50,55 @@ app.get("/api/zones", (req, res) => {
     res.json(JSON.parse(data));
   } catch (error) {
     res.status(500).json({ error: "Failed to read zones" });
+  }
+});
+
+// Places Endpoints
+app.get("/api/places", (req, res) => {
+  try {
+    const data = fs.readFileSync(PLACES_FILE, "utf-8");
+    res.json(JSON.parse(data));
+  } catch (error) {
+    res.status(500).json({ error: "Failed to read places" });
+  }
+});
+
+app.post("/api/places", authenticate, (req, res) => {
+  try {
+    const places = JSON.parse(fs.readFileSync(PLACES_FILE, "utf-8"));
+    const newPlace = { ...req.body, id: uuidv4() };
+    places.push(newPlace);
+    fs.writeFileSync(PLACES_FILE, JSON.stringify(places, null, 2));
+    res.status(201).json(newPlace);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to save place" });
+  }
+});
+
+app.put("/api/places/:id", authenticate, (req, res) => {
+  try {
+    let places = JSON.parse(fs.readFileSync(PLACES_FILE, "utf-8"));
+    const index = places.findIndex((p: any) => p.id === req.params.id);
+    if (index !== -1) {
+      places[index] = { ...req.body, id: req.params.id };
+      fs.writeFileSync(PLACES_FILE, JSON.stringify(places, null, 2));
+      res.json(places[index]);
+    } else {
+      res.status(404).json({ error: "Place not found" });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update place" });
+  }
+});
+
+app.delete("/api/places/:id", authenticate, (req, res) => {
+  try {
+    let places = JSON.parse(fs.readFileSync(PLACES_FILE, "utf-8"));
+    places = places.filter((p: any) => p.id !== req.params.id);
+    fs.writeFileSync(PLACES_FILE, JSON.stringify(places, null, 2));
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete place" });
   }
 });
 

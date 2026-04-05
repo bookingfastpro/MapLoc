@@ -5,6 +5,13 @@ export interface Zone {
   points: [number, number][]; // [lat, lng]
 }
 
+export interface Place {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 export interface UserPosition {
   lat: number;
   lng: number;

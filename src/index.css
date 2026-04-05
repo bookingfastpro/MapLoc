@@ -110,3 +110,34 @@ html, body, #root {
   }
 }
 
+.place-tooltip {
+  background-color: white !important;
+  border: 2px solid #4f46e5 !important;
+  border-radius: 8px !important;
+  padding: 2px 6px !important;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1) !important;
+  color: #4f46e5 !important;
+  font-weight: bold !important;
+}
+
+.place-tooltip::before {
+  border-top-color: #4f46e5 !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+

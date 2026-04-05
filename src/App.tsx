@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MapContainer, TileLayer, Polygon, Marker, CircleMarker, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon, Marker, CircleMarker, useMap, useMapEvents, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
-import { Zone, UserPosition } from './types';
+import { Zone, UserPosition, Place } from './types';
 import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
@@ -92,15 +92,17 @@ function ChangeView({ center, shouldCenter }: { center: [number, number], should
 function MapEventsHandler({ 
   onMapClick, 
   isDrawing, 
+  isAddingPlace,
   onUserInteraction 
 }: { 
   onMapClick: (lat: number, lng: number) => void, 
   isDrawing: boolean,
+  isAddingPlace: boolean,
   onUserInteraction: () => void
 }) {
   useMapEvents({
     click: (e) => {
-      if (isDrawing) {
+      if (isDrawing || isAddingPlace) {
         onMapClick(e.latlng.lat, e.latlng.lng);
       }
     },
@@ -113,6 +115,7 @@ function MapEventsHandler({
 
 export default function App() {
   const [zones, setZones] = useState<Zone[]>([]);
+  const [places, setPlaces] = useState<Place[]>([]);
   const [userPos, setUserPos] = useState<UserPosition | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [token, setToken] = useState<string | null>(localStorage.getItem('adminToken'));
@@ -129,6 +132,11 @@ export default function App() {
   const [newZoneColor, setNewZoneColor] = useState<'red' | 'green' | 'yellow'>('red');
   const [newZoneName, setNewZoneName] = useState('');
 
+  // Place state
+  const [isAddingPlace, setIsAddingPlace] = useState(false);
+  const [newPlaceName, setNewPlaceName] = useState('');
+  const [newPlacePos, setNewPlacePos] = useState<[number, number] | null>(null);
+
   // Fetch zones
   const fetchZones = async () => {
     try {
@@ -139,10 +147,23 @@ export default function App() {
     }
   };
 
+  const fetchPlaces = async () => {
+    try {
+      const res = await axios.get('/api/places');
+      setPlaces(res.data);
+    } catch (err) {
+      console.error('Failed to fetch places', err);
+    }
+  };
+
   useEffect(() => {
     fetchZones();
+    fetchPlaces();
     // Poll for updates every 10 seconds
-    const interval = setInterval(fetchZones, 10000);
+    const interval = setInterval(() => {
+      fetchZones();
+      fetchPlaces();
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -227,7 +248,42 @@ export default function App() {
   };
 
   const addPoint = (lat: number, lng: number) => {
-    setNewZonePoints([...newZonePoints, [lat, lng]]);
+    if (isDrawing) {
+      setNewZonePoints([...newZonePoints, [lat, lng]]);
+    } else if (isAddingPlace) {
+      setNewPlacePos([lat, lng]);
+    }
+  };
+
+  const savePlace = async () => {
+    if (!newPlacePos || !newPlaceName) return;
+    try {
+      const placeData = {
+        name: newPlaceName,
+        lat: newPlacePos[0],
+        lng: newPlacePos[1]
+      };
+      await axios.post('/api/places', placeData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchPlaces();
+      setIsAddingPlace(false);
+      setNewPlacePos(null);
+      setNewPlaceName('');
+    } catch (err) {
+      console.error('Failed to save place', err);
+    }
+  };
+
+  const deletePlace = async (id: string) => {
+    try {
+      await axios.delete(`/api/places/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchPlaces();
+    } catch (err) {
+      console.error('Failed to delete place', err);
+    }
   };
 
   const updatePoint = (idx: number, lat: number, lng: number) => {
@@ -342,9 +398,46 @@ export default function App() {
                 fillOpacity: 0.4
               }}
             >
-              {/* Optional: Add Tooltip or Popup here */}
             </Polygon>
           ))}
+
+          {/* Existing Places */}
+          {places.map((place) => (
+            <Marker 
+              key={place.id} 
+              position={[place.lat, place.lng]}
+              icon={L.divIcon({
+                className: 'place-marker',
+                html: `
+                  <div class="flex flex-col items-center">
+                    <div class="bg-indigo-600 p-2 rounded-full shadow-lg border-2 border-white">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                    </div>
+                  </div>
+                `,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+              })}
+            >
+              <Tooltip permanent direction="top" offset={[0, -14]} className="place-tooltip">
+                <span className="font-bold text-xs text-indigo-700 px-1">{place.name}</span>
+              </Tooltip>
+            </Marker>
+          ))}
+
+          {/* New Place Preview */}
+          {isAddingPlace && newPlacePos && (
+            <Marker position={newPlacePos} icon={L.divIcon({
+              className: 'place-marker-preview',
+              html: `
+                <div class="bg-indigo-400 p-2 rounded-full shadow-lg border-2 border-white animate-bounce">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                </div>
+              `,
+              iconSize: [32, 32],
+              iconAnchor: [16, 16]
+            })} />
+          )}
 
           {/* New Zone Preview */}
           {isDrawing && newZonePoints.length > 0 && (
@@ -379,6 +472,7 @@ export default function App() {
           <MapEventsHandler 
             onMapClick={addPoint} 
             isDrawing={isDrawing} 
+            isAddingPlace={isAddingPlace}
             onUserInteraction={() => setShouldCenter(false)}
           />
         </MapContainer>
@@ -498,14 +592,26 @@ export default function App() {
                   </button>
                 </div>
                 
-                {!isDrawing ? (
-                  <button
-                    onClick={startDrawing}
-                    className="w-full bg-blue-600 text-white py-2 px-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors text-xs"
-                  >
-                    <Plus className="w-4 h-4" /> Créer une zone
-                  </button>
-                ) : (
+                {!isDrawing && !isAddingPlace ? (
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={startDrawing}
+                      className="w-full bg-blue-600 text-white py-2 px-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-blue-700 transition-colors text-xs"
+                    >
+                      <Plus className="w-4 h-4" /> Créer une zone
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsAddingPlace(true);
+                        setNewPlaceName(`Lieu ${places.length + 1}`);
+                        setNewPlacePos(null);
+                      }}
+                      className="w-full bg-indigo-600 text-white py-2 px-4 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors text-xs"
+                    >
+                      <MapPin className="w-4 h-4" /> Ajouter un lieu
+                    </button>
+                  </div>
+                ) : isDrawing ? (
                   <div className="space-y-3">
                     <h3 className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">
                       {editingZoneId ? 'Édition' : 'Création'}
@@ -553,6 +659,35 @@ export default function App() {
                       </button>
                     </div>
                   </div>
+                ) : (
+                  <div className="space-y-3">
+                    <h3 className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                      Nouveau Lieu
+                    </h3>
+                    <p className="text-[10px] text-gray-500 italic">Cliquez sur la carte pour placer le lieu</p>
+                    <input
+                      type="text"
+                      value={newPlaceName}
+                      onChange={(e) => setNewPlaceName(e.target.value)}
+                      placeholder="Nom du lieu"
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={savePlace}
+                        disabled={!newPlacePos || !newPlaceName}
+                        className="flex-1 bg-green-600 text-white py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-green-700 disabled:opacity-50"
+                      >
+                        <Save className="w-3 h-3" /> Sauver
+                      </button>
+                      <button
+                        onClick={() => setIsAddingPlace(false)}
+                        className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 hover:bg-gray-300"
+                      >
+                        <X className="w-3 h-3" /> Annuler
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 <div className="mt-4 border-t pt-4">
@@ -567,6 +702,21 @@ export default function App() {
                       <Upload className="w-3 h-3" /> IMPORT
                       <input type="file" accept=".json" onChange={importZones} className="hidden" />
                     </label>
+                  </div>
+
+                  <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Lieux</h3>
+                  <div className="max-h-32 overflow-y-auto space-y-2 pr-1 custom-scrollbar mb-4">
+                    {places.map(p => (
+                      <div key={p.id} className="flex items-center justify-between bg-gray-50 p-2 rounded-lg border border-gray-100 group">
+                        <div className="flex items-center gap-2 overflow-hidden cursor-pointer flex-1">
+                          <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
+                          <span className="text-[10px] font-medium text-gray-700 truncate">{p.name}</span>
+                        </div>
+                        <button onClick={() => deletePlace(p.id)} className="text-gray-400 hover:text-red-500 p-1">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
 
                   <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Zones</h3>
