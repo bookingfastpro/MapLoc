@@ -35,12 +35,22 @@ let DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 // Custom User Marker
-const userIcon = L.divIcon({
-  className: 'user-marker-container',
-  html: '<div class="user-marker"><div class="user-marker-pulse"></div></div>',
-  iconSize: [16, 16],
-  iconAnchor: [8, 8]
-});
+const createUserIcon = (heading: number | null) => {
+  const rotation = heading !== null ? `transform: rotate(${heading}deg);` : 'display: none;';
+  return L.divIcon({
+    className: 'user-marker-container',
+    html: `
+      <div class="user-marker">
+        <div class="user-marker-pulse"></div>
+        <div class="user-marker-heading" style="${rotation}">
+          <div class="user-marker-arrow"></div>
+        </div>
+      </div>
+    `,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8]
+  });
+};
 
 // Custom Point Marker for drawing/editing
 const createPointIcon = (color: string) => L.divIcon({
@@ -55,7 +65,7 @@ function ChangeView({ center, shouldCenter }: { center: [number, number], should
   const map = useMap();
   useEffect(() => {
     if (shouldCenter) {
-      map.setView(center, map.getZoom());
+      map.setView(center, 18);
     }
   }, [center, map, shouldCenter]);
   return null;
@@ -127,7 +137,8 @@ export default function App() {
           setUserPos({
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
-            accuracy: pos.coords.accuracy
+            accuracy: pos.coords.accuracy,
+            heading: pos.coords.heading
           });
         },
         (err) => console.error('Geolocation error', err),
@@ -285,7 +296,7 @@ export default function App() {
     <div className="relative h-screen w-screen bg-gray-100 font-sans overflow-hidden">
       {/* Map Container */}
       <div className="absolute inset-0 z-0">
-        <MapContainer center={[48.8566, 2.3522]} zoom={13} scrollWheelZoom={true}>
+        <MapContainer center={[48.8566, 2.3522]} zoom={18} scrollWheelZoom={true}>
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -295,7 +306,7 @@ export default function App() {
           {userPos && (
             <>
               <ChangeView center={[userPos.lat, userPos.lng]} shouldCenter={shouldCenter} />
-              <Marker position={[userPos.lat, userPos.lng]} icon={userIcon} />
+              <Marker position={[userPos.lat, userPos.lng]} icon={createUserIcon(userPos.heading)} />
             </>
           )}
 

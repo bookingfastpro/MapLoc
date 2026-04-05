@@ -9,4 +9,5 @@ export interface UserPosition {
   lat: number;
   lng: number;
   accuracy: number;
+  heading: number | null;
 }
