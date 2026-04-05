@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, CircleMarker, useMap, useMapEvents, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { Zone, UserPosition, Place } from './types';
-import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload, ChevronDown, ChevronUp } from 'lucide-react';
+import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload, ChevronDown, ChevronUp, Phone } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle } from 'lucide-react';
@@ -844,6 +844,15 @@ export default function App() {
               </motion.div>
             </div>
           )}
+
+          {/* Call Button */}
+          <a
+            href="tel:+33970703989"
+            className="p-4 rounded-full shadow-2xl transition-all active:scale-90 pointer-events-auto bg-green-600 text-white hover:bg-green-700"
+            title="Appeler le support"
+          >
+            <Phone className="w-6 h-6" />
+          </a>
 
           {/* Floating Action Button for Location (Mobile) */}
           <button
