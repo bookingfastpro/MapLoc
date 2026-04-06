@@ -151,6 +151,7 @@ export default function App() {
   const [editHours, setEditHours] = useState('0');
   const [editMinutes, setEditMinutes] = useState('30');
   const [hasShown15MinAlert, setHasShown15MinAlert] = useState(false);
+  const [wasOutsideStopRadius, setWasOutsideStopRadius] = useState(true);
 
   // Update remaining time every second
   useEffect(() => {
@@ -197,6 +198,19 @@ export default function App() {
     if (sessionStartTime === 0) {
       setSessionStartTime(now);
     }
+    
+    // Check if we are starting inside a stop radius
+    if (userPos && places.length > 0) {
+      const isInside = places.some(p => {
+        if (!p.stopRadius || p.stopRadius <= 0) return false;
+        const dist = L.latLng(userPos.lat, userPos.lng).distanceTo(L.latLng(p.lat, p.lng));
+        return dist <= p.stopRadius;
+      });
+      setWasOutsideStopRadius(!isInside);
+    } else {
+      setWasOutsideStopRadius(true);
+    }
+
     setTimerStartTime(now);
     setTimerRunning(true);
   };
@@ -230,6 +244,7 @@ export default function App() {
     setTimerAccumulated(0);
     setRemainingTime(totalCountdownTime);
     setHasShown15MinAlert(false);
+    setWasOutsideStopRadius(true);
   };
 
   const addTime = (minutes: number) => {
@@ -380,8 +395,14 @@ export default function App() {
       });
 
       if (stopPlace) {
-        pauseTimer();
-        showAlert('Timer Arrêté', `Vous êtes entré dans la zone de ${stopPlace.name}. Le compte à rebours a été mis en pause.`);
+        if (wasOutsideStopRadius) {
+          pauseTimer();
+          showAlert('Timer Arrêté', `Vous êtes entré dans la zone de ${stopPlace.name}. Le compte à rebours a été mis en pause.`);
+          setWasOutsideStopRadius(false);
+        }
+      } else {
+        // User is outside any stop radius
+        setWasOutsideStopRadius(true);
       }
     }
   }, [userPos, zones, places, timerRunning]);
