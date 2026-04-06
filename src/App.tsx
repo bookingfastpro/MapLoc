@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MapContainer, TileLayer, Polygon, Marker, CircleMarker, useMap, useMapEvents, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon, Marker, Circle, useMap, useMapEvents, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { Zone, UserPosition, Place, TimerHistoryEntry } from './types';
 import { MapPin, Navigation, Plus, Trash2, Save, X, LogOut, Settings, Download, Upload, ChevronDown, ChevronUp, Phone, Timer, Play, RotateCcw, History } from 'lucide-react';
@@ -523,17 +523,21 @@ export default function App() {
     });
   };
 
-  const exportZones = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(zones, null, 2));
+  const exportData = () => {
+    const data = {
+      zones,
+      places
+    };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", "zones.json");
+    downloadAnchorNode.setAttribute("download", "data_export.json");
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
   };
 
-  const importZones = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const importData = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -541,13 +545,26 @@ export default function App() {
     reader.onload = async (event) => {
       try {
         const importedData = JSON.parse(event.target?.result as string);
-        await axios.post('/api/zones/import', importedData, {
+        
+        // Handle both formats: old (array of zones) and new (object with zones and places)
+        let payload = importedData;
+        if (!Array.isArray(importedData) && (importedData.zones || importedData.places)) {
+          // New format
+          payload = importedData;
+        } else if (Array.isArray(importedData)) {
+          // Old format
+          payload = { zones: importedData };
+        }
+
+        await axios.post('/api/import', payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        
         fetchZones();
+        fetchPlaces();
         showAlert('Succès', 'Importation réussie !');
       } catch (err) {
-        console.error('Failed to import zones', err);
+        console.error('Failed to import data', err);
         showAlert('Erreur', 'Erreur lors de l\'importation. Vérifiez le format du fichier.');
       }
     };
@@ -608,14 +625,14 @@ export default function App() {
                 <Tooltip permanent direction="top" offset={[0, -14]} className="place-tooltip">
                   <div className="flex flex-col items-center">
                     <span className="font-bold text-xs text-indigo-700 px-1">{place.name}</span>
-                    {place.stopRadius && place.stopRadius > 0 && (
+                    {place.stopRadius > 0 && (
                       <span className="text-[8px] text-gray-500 italic">Arrêt: {place.stopRadius}m</span>
                     )}
                   </div>
                 </Tooltip>
               </Marker>
-              {place.stopRadius && place.stopRadius > 0 && (
-                <CircleMarker
+              {place.stopRadius > 0 && (
+                <Circle
                   center={[place.lat, place.lng]}
                   radius={place.stopRadius}
                   pathOptions={{
@@ -632,16 +649,31 @@ export default function App() {
 
           {/* New Place Preview */}
           {isAddingPlace && newPlacePos && (
-            <Marker position={newPlacePos} icon={L.divIcon({
-              className: 'place-marker-preview',
-              html: `
-                <div class="bg-indigo-400 p-2 rounded-full shadow-lg border-2 border-white animate-bounce">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                </div>
-              `,
-              iconSize: [32, 32],
-              iconAnchor: [16, 16]
-            })} />
+            <>
+              <Marker position={newPlacePos} icon={L.divIcon({
+                className: 'place-marker-preview',
+                html: `
+                  <div class="bg-indigo-400 p-2 rounded-full shadow-lg border-2 border-white animate-bounce">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                  </div>
+                `,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+              })} />
+              {newPlaceStopRadius > 0 && (
+                <Circle
+                  center={newPlacePos}
+                  radius={newPlaceStopRadius}
+                  pathOptions={{
+                    color: '#818cf8',
+                    fillColor: '#818cf8',
+                    fillOpacity: 0.1,
+                    dashArray: '5, 10',
+                    weight: 1
+                  }}
+                />
+              )}
+            </>
           )}
 
           {/* New Zone Preview */}
@@ -922,11 +954,20 @@ export default function App() {
                             <span className="text-xs text-gray-500">Départ: {formatStartTime(entry.startTime)}</span>
                             <span className="text-xs text-gray-500">Fin: {formatStartTime(entry.endTime)}</span>
                           </div>
-                          <div className="text-right">
-                            <span className="text-sm font-mono font-bold text-gray-800">
-                              {formatTime(entry.duration)}
+                          <div className="text-right flex flex-col items-end">
+                            <span className={`text-sm font-mono font-bold ${entry.duration > entry.initialCountdown ? 'text-red-500' : 'text-gray-800'}`}>
+                              {entry.duration > entry.initialCountdown 
+                                ? formatTime(entry.initialCountdown - entry.duration) 
+                                : formatTime(entry.duration)}
                             </span>
-                            <p className="text-[9px] text-gray-400 uppercase font-bold">Écoulé</p>
+                            <p className="text-[9px] text-gray-400 uppercase font-bold mb-1">Écoulé</p>
+                            
+                            <span className={`text-[10px] font-mono font-bold ${entry.initialCountdown - entry.duration < 0 ? 'text-red-500' : 'text-green-600'}`}>
+                              {entry.initialCountdown - entry.duration < 0 
+                                ? formatTime(0) 
+                                : formatTime(entry.initialCountdown - entry.duration)}
+                            </span>
+                            <p className="text-[9px] text-gray-400 uppercase font-bold">Reste</p>
                           </div>
                         </div>
                       </div>
@@ -1229,14 +1270,14 @@ export default function App() {
                       <div className="mt-4 border-t pt-4">
                         <div className="flex gap-2 mb-4">
                           <button
-                            onClick={exportZones}
+                            onClick={exportData}
                             className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-[9px] font-bold flex items-center justify-center gap-1 hover:bg-gray-200"
                           >
                             <Download className="w-3 h-3" /> EXPORT
                           </button>
                           <label className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg text-[9px] font-bold flex items-center justify-center gap-1 hover:bg-gray-200 cursor-pointer">
                             <Upload className="w-3 h-3" /> IMPORT
-                            <input type="file" accept=".json" onChange={importZones} className="hidden" />
+                            <input type="file" accept=".json" onChange={importData} className="hidden" />
                           </label>
                         </div>
 
@@ -1248,7 +1289,7 @@ export default function App() {
                                 <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
                                 <div className="flex flex-col overflow-hidden">
                                   <span className="text-[10px] font-medium text-gray-700 truncate">{p.name}</span>
-                                  {p.stopRadius && p.stopRadius > 0 && (
+                                  {p.stopRadius > 0 && (
                                     <span className="text-[8px] text-indigo-400 font-bold uppercase">Arrêt: {p.stopRadius}m</span>
                                   )}
                                 </div>

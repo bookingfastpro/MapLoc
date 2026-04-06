@@ -141,23 +141,47 @@ app.delete("/api/zones/:id", authenticate, (req, res) => {
   }
 });
 
-app.post("/api/zones/import", authenticate, (req, res) => {
+app.post("/api/import", authenticate, (req, res) => {
   try {
-    const importedZones = req.body;
-    if (!Array.isArray(importedZones)) {
-      return res.status(400).json({ error: "Invalid data format. Expected an array of zones." });
+    const importedData = req.body;
+    let zonesToImport = [];
+    let placesToImport = [];
+
+    if (Array.isArray(importedData)) {
+      // Old format: just an array of zones
+      zonesToImport = importedData;
+    } else {
+      // New format: object with zones and/or places
+      zonesToImport = importedData.zones || [];
+      placesToImport = importedData.places || [];
     }
     
-    // Ensure all zones have IDs
-    const zonesWithIds = importedZones.map((z: any) => ({
-      ...z,
-      id: z.id || uuidv4()
-    }));
+    // Process Zones
+    if (zonesToImport.length > 0) {
+      const zonesWithIds = zonesToImport.map((z: any) => ({
+        ...z,
+        id: z.id || uuidv4()
+      }));
+      fs.writeFileSync(DATA_FILE, JSON.stringify(zonesWithIds, null, 2));
+    }
 
-    fs.writeFileSync(DATA_FILE, JSON.stringify(zonesWithIds, null, 2));
-    res.json({ message: "Zones imported successfully", count: zonesWithIds.length });
+    // Process Places
+    if (placesToImport.length > 0) {
+      const placesWithIds = placesToImport.map((p: any) => ({
+        ...p,
+        id: p.id || uuidv4()
+      }));
+      fs.writeFileSync(PLACES_FILE, JSON.stringify(placesWithIds, null, 2));
+    }
+
+    res.json({ 
+      message: "Data imported successfully", 
+      zonesCount: zonesToImport.length,
+      placesCount: placesToImport.length
+    });
   } catch (error) {
-    res.status(500).json({ error: "Failed to import zones" });
+    console.error("Import error:", error);
+    res.status(500).json({ error: "Failed to import data" });
   }
 });
 
